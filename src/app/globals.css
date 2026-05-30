@@ -6,18 +6,15 @@
   :root {
     color-scheme: dark;
 
-    /* surfaces */
-    --bg: 0 0% 4%;
-    --bg-subtle: 0 0% 7%;
-    --bg-card: 0 0% 6%;
-    --bg-border: 0 0% 14%;
+    --bg: 0 0% 3.5%;
+    --bg-subtle: 0 0% 6.5%;
+    --bg-card: 0 0% 5.5%;
+    --bg-border: 0 0% 13%;
 
-    /* text */
-    --fg: 0 0% 96%;
-    --fg-muted: 0 0% 64%;
-    --fg-subtle: 0 0% 45%;
+    --fg: 0 0% 97%;
+    --fg-muted: 0 0% 62%;
+    --fg-subtle: 0 0% 42%;
 
-    /* pillar accents (kept low-saturation) */
     --accent-rich: 38 65% 55%;
     --accent-muscular: 0 70% 55%;
     --accent-intelligent: 215 70% 60%;
@@ -32,37 +29,34 @@
     background: hsl(var(--bg));
     color: hsl(var(--fg));
     min-height: 100vh;
-    font-family:
-      "Helvetica Neue",
-      Helvetica,
-      Arial,
-      "Liberation Sans",
-      sans-serif;
+    font-family: var(--font-sans), system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
   }
 
   ::selection {
-    background: hsl(var(--fg) / 0.18);
+    background: hsl(var(--fg) / 0.16);
     color: hsl(var(--fg));
   }
 }
 
 @layer components {
   .card {
-    @apply rounded-lg border border-bg-border bg-bg-card p-5;
+    @apply rounded-lg border border-bg-border bg-bg-card p-5 shadow-card;
   }
 
   .btn {
     @apply inline-flex select-none items-center justify-center gap-2 whitespace-nowrap rounded-md
            border border-bg-border bg-transparent px-4 py-2 text-sm font-medium text-fg
-           transition-colors hover:bg-bg-subtle hover:border-fg-subtle/40
-           focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-fg/40
+           transition-[color,background-color,border-color,box-shadow] duration-150
+           hover:bg-bg-subtle hover:border-fg-subtle/30
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/25
            disabled:pointer-events-none disabled:opacity-50;
   }
   .btn-primary {
-    @apply border-fg bg-fg text-bg hover:bg-fg/90 hover:border-fg/90;
+    @apply border-fg bg-fg font-semibold text-bg shadow-[0_1px_0_hsl(0_0%_100%/0.08)_inset]
+           hover:opacity-90;
   }
   .btn-danger {
     @apply border-red-500/70 bg-red-600/90 text-white hover:bg-red-600 hover:border-red-500;
@@ -72,18 +66,18 @@
   }
 
   .input {
-    @apply w-full rounded-md border border-bg-border bg-bg-subtle px-3 py-2 text-sm text-fg
+    @apply w-full rounded-md border border-bg-border bg-bg-subtle px-3 py-2.5 text-sm text-fg
            placeholder:text-fg-subtle
-           focus:border-fg-muted focus:outline-none focus:ring-1 focus:ring-fg-muted/40;
+           focus:border-fg-muted/60 focus:outline-none focus:ring-2 focus:ring-fg/15;
   }
 
   .label {
-    @apply text-[11px] font-medium uppercase tracking-wider text-fg-muted;
+    @apply font-display text-[11px] font-medium uppercase tracking-[0.14em] text-fg-muted;
   }
 
   .pill {
     @apply inline-flex items-center rounded-md border border-bg-border bg-bg-subtle px-2 py-0.5
-           text-[10px] font-medium uppercase tracking-wider text-fg-muted;
+           font-display text-[10px] font-medium uppercase tracking-[0.12em] text-fg-muted;
   }
   .pill-rich {
     color: hsl(var(--accent-rich));
@@ -102,13 +96,13 @@
   }
 
   .section-label {
-    @apply text-[10px] font-medium uppercase tracking-[0.18em] text-fg-muted;
+    @apply font-display text-[10px] font-semibold uppercase tracking-[0.2em] text-fg-muted;
   }
 
   .h1 {
-    @apply text-2xl font-medium tracking-tight text-fg;
+    @apply font-display text-2xl font-semibold tracking-brand text-fg;
   }
   .h2 {
-    @apply text-sm font-medium tracking-tight text-fg;
+    @apply font-display text-sm font-semibold tracking-tight text-fg;
   }
 }

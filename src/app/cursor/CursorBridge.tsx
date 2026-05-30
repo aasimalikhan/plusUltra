@@ -28,19 +28,21 @@ export function CursorBridge({
   fullPayload,
   markdown,
   prompt,
+  briefing,
 }: {
   fullPayload: string;
   markdown: string;
   prompt: string;
+  briefing: string;
 }) {
-  const [copied, setCopied] = useState<"none" | "full" | "ctx" | "prompt">("none");
+  const [copied, setCopied] = useState<"none" | "full" | "ctx" | "prompt" | "brief">("none");
   const [raw, setRaw] = useState("");
   const [parsedPreview, setParsedPreview] = useState<CursorPlan | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
   const [pending, startTransition] = useTransition();
 
-  async function copy(text: string, which: "full" | "ctx" | "prompt") {
+  async function copy(text: string, which: "full" | "ctx" | "prompt" | "brief") {
     await navigator.clipboard.writeText(text);
     setCopied(which);
     setTimeout(() => setCopied("none"), 1500);
@@ -80,21 +82,46 @@ export function CursorBridge({
           <h2 className="section-label">1 · Send to Cursor</h2>
         </header>
         <p className="text-sm text-fg-muted">
-          One-click copy a single payload (prompt + 7 days of context). Paste
-          into a brand new Cursor chat.
+          Use <strong className="font-normal text-fg">Copy everything</strong> for a new chat —
+          includes app briefing (what plusUltra is), analyst instructions, and 7 days of data.
         </p>
-        <div className="flex flex-col gap-2 sm:flex-row">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <button
+            type="button"
             onClick={() => copy(fullPayload, "full")}
-            className="btn btn-primary flex-1"
+            className="btn btn-primary h-auto min-h-10 w-full whitespace-normal px-4 py-2.5 text-center leading-snug sm:col-span-2"
           >
-            {copied === "full" ? "Copied" : "Copy prompt + context"}
+            {copied === "full" ? (
+              "Copied"
+            ) : (
+              <>
+                Copy everything
+                <span className="mt-0.5 block text-xs font-normal opacity-80">
+                  recommended · briefing + prompt + 7 days data
+                </span>
+              </>
+            )}
           </button>
-          <button onClick={() => copy(prompt, "prompt")} className="btn">
-            {copied === "prompt" ? "Copied" : "Copy prompt only"}
+          <button
+            type="button"
+            onClick={() => copy(briefing, "brief")}
+            className="btn h-auto min-h-10 w-full whitespace-normal px-4 py-2.5 text-center leading-snug"
+          >
+            {copied === "brief" ? "Copied" : "App briefing only"}
           </button>
-          <button onClick={() => copy(markdown, "ctx")} className="btn">
-            {copied === "ctx" ? "Copied" : "Copy context only"}
+          <button
+            type="button"
+            onClick={() => copy(prompt, "prompt")}
+            className="btn h-auto min-h-10 w-full whitespace-normal px-4 py-2.5 text-center leading-snug"
+          >
+            {copied === "prompt" ? "Copied" : "Analyst prompt only"}
+          </button>
+          <button
+            type="button"
+            onClick={() => copy(markdown, "ctx")}
+            className="btn h-auto min-h-10 w-full whitespace-normal px-4 py-2.5 text-center leading-snug sm:col-span-2"
+          >
+            {copied === "ctx" ? "Copied" : "Live data only"}
           </button>
         </div>
         <details className="rounded-md border border-bg-border bg-bg-subtle">
@@ -121,14 +148,20 @@ export function CursorBridge({
           className="input font-mono text-xs"
           placeholder='{ "summary": "...", "tomorrow_tasks": [...], "rule_changes": {...} }'
         />
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <button onClick={previewPlan} disabled={!raw.trim()} className="btn flex-1">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={previewPlan}
+            disabled={!raw.trim()}
+            className="btn h-auto min-h-10 w-full whitespace-normal py-2.5"
+          >
             Validate & preview
           </button>
           <button
+            type="button"
             onClick={applyPlan}
             disabled={!parsedPreview || pending}
-            className="btn btn-primary flex-1"
+            className="btn btn-primary h-auto min-h-10 w-full whitespace-normal py-2.5"
           >
             {pending ? "Applying…" : "Apply plan"}
           </button>

@@ -1,21 +1,31 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getServerDb } from "@/lib/db";
 import { formatDateISO } from "@/lib/utils";
 import type { CursorPlan } from "@/lib/db-types";
 
-function validatePlan(input: unknown): { ok: true; plan: CursorPlan } | { ok: false; error: string } {
-  if (!input || typeof input !== "object") return { ok: false, error: "not an object" };
+function validatePlan(
+  input: unknown,
+  allowedSlugs: Set<string>,
+): { ok: true; plan: CursorPlan } | { ok: false; error: string } {
+  if (!input || typeof input !== "object")
+    return { ok: false, error: "not an object" };
   const p = input as Record<string, unknown>;
-  if (typeof p.summary !== "string") return { ok: false, error: "summary must be a string" };
+  if (typeof p.summary !== "string")
+    return { ok: false, error: "summary must be a string" };
   if (!Array.isArray(p.tomorrow_tasks))
     return { ok: false, error: "tomorrow_tasks must be an array" };
   for (const t of p.tomorrow_tasks) {
-    if (!t || typeof t !== "object") return { ok: false, error: "tomorrow_tasks item not object" };
+    if (!t || typeof t !== "object")
+      return { ok: false, error: "tomorrow_tasks item not object" };
     const tt = t as Record<string, unknown>;
-    if (!["RICH", "MUSCULAR", "INTELLIGENT"].includes(String(tt.macro_goal_slug)))
-      return { ok: false, error: "bad macro_goal_slug" };
+    const slug = String(tt.macro_goal_slug ?? "").toUpperCase();
+    if (!allowedSlugs.has(slug))
+      return {
+        ok: false,
+        error: `unknown macro_goal_slug "${slug}" — use: ${[...allowedSlugs].join(", ")}`,
+      };
     if (typeof tt.task_name !== "string" || !tt.task_name.trim())
       return { ok: false, error: "missing task_name" };
   }
@@ -26,11 +36,7 @@ export async function applyCursorPlan(opts: {
   rawInputMarkdown: string;
   rawOutputText: string;
 }): Promise<{ ok: boolean; error?: string; runId?: string; tasksCreated?: number }> {
-  const supabase = createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "not signed in" };
+  const { supabase, userId } = await getServerDb();
 
   let parsed: unknown;
   try {
@@ -38,11 +44,16 @@ export async function applyCursorPlan(opts: {
   } catch (err) {
     return { ok: false, error: `Could not parse JSON: ${(err as Error).message}` };
   }
-  const v = validatePlan(parsed);
+  const { data: goals } = await supabase
+    .from("macro_goals")
+    .select("slug")
+    .eq("user_id", userId);
+  const allowedSlugs = new Set((goals ?? []).map((g) => g.slug as string));
+
+  const v = validatePlan(parsed, allowedSlugs);
   if (!v.ok) return { ok: false, error: v.error };
   const plan = v.plan;
 
-  // Resolve tomorrow's date + plan
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
   const tomorrowISO = formatDateISO(tomorrow);
@@ -50,26 +61,24 @@ export async function applyCursorPlan(opts: {
   const { data: planRow, error: planErr } = await supabase
     .from("daily_plans")
     .upsert(
-      { user_id: user.id, plan_date: tomorrowISO },
+      { user_id: userId, plan_date: tomorrowISO },
       { onConflict: "user_id,plan_date" },
     )
     .select("id")
     .single();
   if (planErr || !planRow) return { ok: false, error: planErr?.message ?? "no plan" };
 
-  // Goals lookup by slug
-  const { data: goals } = await supabase
+  const { data: goalsFull } = await supabase
     .from("macro_goals")
     .select("id, slug")
-    .eq("user_id", user.id);
-  const slugToId = new Map((goals ?? []).map((g) => [g.slug, g.id] as const));
+    .eq("user_id", userId);
+  const slugToId = new Map((goalsFull ?? []).map((g) => [g.slug, g.id] as const));
 
-  // Insert tomorrow's tasks (additive, doesn't wipe existing)
   const taskInserts = plan.tomorrow_tasks
     .map((t) => ({
-      user_id: user.id,
+      user_id: userId,
       daily_plan_id: planRow.id,
-      macro_goal_id: slugToId.get(t.macro_goal_slug) ?? null,
+      macro_goal_id: slugToId.get(String(t.macro_goal_slug).toUpperCase()) ?? null,
       task_name: t.task_name.trim(),
       source: "cursor" as const,
     }))
@@ -85,11 +94,10 @@ export async function applyCursorPlan(opts: {
     tasksCreated = inserted?.length ?? 0;
   }
 
-  // Apply rule changes
   const rc = plan.rule_changes ?? {};
   if (rc.add && rc.add.length > 0) {
     const ruleInserts = rc.add.map((r) => ({
-      user_id: user.id,
+      user_id: userId,
       rule_text: r.rule_text,
       priority: r.priority ?? 100,
       last_relevant_at: new Date().toISOString(),
@@ -102,7 +110,7 @@ export async function applyCursorPlan(opts: {
         .from("rules")
         .update({ priority: d.priority })
         .eq("id", d.id)
-        .eq("user_id", user.id);
+        .eq("user_id", userId);
     }
   }
   if (rc.deactivate && rc.deactivate.length > 0) {
@@ -110,14 +118,13 @@ export async function applyCursorPlan(opts: {
       .from("rules")
       .update({ is_active: false })
       .in("id", rc.deactivate)
-      .eq("user_id", user.id);
+      .eq("user_id", userId);
   }
 
-  // Always write an analysis_runs row with raw input + raw output
   const { data: run, error: runErr } = await supabase
     .from("analysis_runs")
     .insert({
-      user_id: user.id,
+      user_id: userId,
       run_date: formatDateISO(),
       cited_journal_ids: plan.cited_journal_ids ?? [],
       cited_task_ids: plan.cited_task_ids ?? [],

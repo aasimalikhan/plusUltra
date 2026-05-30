@@ -8,33 +8,35 @@ This directory holds the SQL migrations for plusUltra v1.
 2. In the project's **SQL Editor**, paste and run each file in order:
    - `migrations/0001_init.sql`
    - `migrations/0002_seed_fn.sql`
-3. Go to **Authentication → Providers → Email**:
-   - **Enable Email provider** = on
-   - **Confirm email** = off (so sign-up works instantly, no inbox needed)
-   - **Secure email change** = optional
-   Login uses **email + password** only (no magic links, no rate limits on OTP emails).
-4. Copy **Project URL** and **Publishable key** (`sb_publishable_...`) from **Settings → API**
-   (or the Connect → Next.js modal) into `.env.local`:
+   - `migrations/0004_auth_fix.sql` (required — custom auth; skip 0003 if you run this)
+   - `migrations/0005_flexible_macro_goals.sql` (optional — add custom macro pillars beyond RICH/MUSCULAR/INTELLIGENT)
+3. Copy keys from **Settings → API** into `.env.local`:
 
    ```
    NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
+   SUPABASE_SERVICE_ROLE_KEY=...secret service_role key...
+   SESSION_SECRET=...at least 32 random characters...
    ```
 
-   Older projects may still show `anon` (JWT) — that also works as
-   `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+   Generate `SESSION_SECRET` (PowerShell):
 
-5. Run the app (`npm run dev`), sign in with your email. On first visit to `/today` the app
-   calls `seed_user_defaults()` which inserts:
+   ```powershell
+   -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 48 | ForEach-Object { [char]$_ })
+   ```
+
+4. Run the app (`npm run dev`). Open `/login`, **Create account** with a username + password.
+   On first visit to `/today` the app calls `seed_user_defaults()` which inserts:
    - 3 macro goals (RICH / MUSCULAR / INTELLIGENT)
    - 6 starter NEW ME rules
    - Today's daily plan with template tasks
 
+**Auth:** plusUltra uses its own `app_users` table (username + bcrypt password). Supabase Auth is not used. The service role key is server-only and never shipped to the browser.
+
 ## Production deploy
 
-Set the same `NEXT_PUBLIC_SUPABASE_*` env vars on Vercel as in `.env.local`. No redirect URL setup needed for password login.
+Set all four env vars on Vercel (same as `.env.local`). No Supabase redirect URL setup needed.
 
 ## Re-running migrations
 
-These files are idempotent (`if not exists`, `on conflict do nothing`, `drop policy if exists`),
-so it is safe to re-run them on an existing project.
+`0001` and `0002` are idempotent. `0003` should be run once. If you already had Supabase Auth users linked to `profiles`, you may need a fresh project or manual cleanup before `0003` (it repoints `profiles` to `app_users`).

@@ -24,18 +24,13 @@ const config: Config = {
         },
       },
       borderRadius: {
-        lg: "0.5rem",
-        md: "0.375rem",
-        sm: "0.25rem",
+        lg: "0.625rem",
+        md: "0.5rem",
+        sm: "0.375rem",
       },
       fontFamily: {
-        sans: [
-          '"Helvetica Neue"',
-          "Helvetica",
-          "Arial",
-          '"Liberation Sans"',
-          "sans-serif",
-        ],
+        sans: ["var(--font-sans)", "system-ui", "sans-serif"],
+        display: ["var(--font-display)", "var(--font-sans)", "system-ui", "sans-serif"],
         mono: [
           "ui-monospace",
           "SFMono-Regular",
@@ -44,6 +39,12 @@ const config: Config = {
           "Consolas",
           "monospace",
         ],
+      },
+      letterSpacing: {
+        brand: "-0.02em",
+      },
+      boxShadow: {
+        card: "0 1px 0 hsl(0 0% 100% / 0.04) inset, 0 8px 24px -8px hsl(0 0% 0% / 0.5)",
       },
     },
   },

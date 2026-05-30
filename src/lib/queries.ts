@@ -1,4 +1,4 @@
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getServerDb } from "@/lib/db";
 import { formatDateISO } from "@/lib/utils";
 import type {
   MacroGoal,
@@ -10,10 +10,11 @@ import type {
 } from "@/lib/db-types";
 
 export async function fetchActiveRules(): Promise<Rule[]> {
-  const supabase = createSupabaseServerClient();
+  const { supabase, userId } = await getServerDb();
   const { data } = await supabase
     .from("rules")
     .select("*")
+    .eq("user_id", userId)
     .eq("is_active", true)
     .order("priority", { ascending: true })
     .order("last_relevant_at", { ascending: false });
@@ -21,68 +22,72 @@ export async function fetchActiveRules(): Promise<Rule[]> {
 }
 
 export async function fetchAllRules(): Promise<Rule[]> {
-  const supabase = createSupabaseServerClient();
+  const { supabase, userId } = await getServerDb();
   const { data } = await supabase
     .from("rules")
     .select("*")
+    .eq("user_id", userId)
     .order("is_active", { ascending: false })
     .order("priority", { ascending: true });
   return (data ?? []) as Rule[];
 }
 
 export async function fetchMacroGoals(): Promise<MacroGoal[]> {
-  const supabase = createSupabaseServerClient();
+  const { supabase, userId } = await getServerDb();
   const { data } = await supabase
     .from("macro_goals")
     .select("*")
+    .eq("user_id", userId)
     .order("sort_order", { ascending: true });
   return (data ?? []) as MacroGoal[];
 }
 
 export async function fetchOrCreateTodayPlan(): Promise<DailyPlan | null> {
-  const supabase = createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
+  const { supabase, userId } = await getServerDb();
   const today = formatDateISO();
   const { data: existing } = await supabase
     .from("daily_plans")
     .select("*")
-    .eq("user_id", user.id)
+    .eq("user_id", userId)
     .eq("plan_date", today)
     .maybeSingle();
   if (existing) return existing as DailyPlan;
   const { data: created } = await supabase
     .from("daily_plans")
-    .insert({ user_id: user.id, plan_date: today })
+    .insert({ user_id: userId, plan_date: today })
     .select("*")
     .single();
   return (created as DailyPlan) ?? null;
 }
 
 export async function fetchTasksForPlan(planId: string): Promise<Task[]> {
-  const supabase = createSupabaseServerClient();
+  const { supabase, userId } = await getServerDb();
   const { data } = await supabase
     .from("tasks")
     .select("*")
+    .eq("user_id", userId)
     .eq("daily_plan_id", planId)
     .order("created_at", { ascending: true });
   return (data ?? []) as Task[];
 }
 
-export async function fetchUnresolvedJournalToday(planId: string): Promise<PointedJournal[]> {
-  const supabase = createSupabaseServerClient();
+export async function fetchUnresolvedJournalToday(
+  planId: string,
+): Promise<PointedJournal[]> {
+  const { supabase, userId } = await getServerDb();
   const { data } = await supabase
     .from("pointed_journal")
     .select("*")
+    .eq("user_id", userId)
     .eq("daily_plan_id", planId)
     .order("created_at", { ascending: false });
   return (data ?? []) as PointedJournal[];
 }
 
-export async function fetchSuccessRate(days = 14): Promise<{ rate: number; done: number; missed: number }> {
-  const supabase = createSupabaseServerClient();
+export async function fetchSuccessRate(
+  days = 14,
+): Promise<{ rate: number; done: number; missed: number }> {
+  const { supabase, userId } = await getServerDb();
   const since = new Date();
   since.setDate(since.getDate() - days);
   const sinceISO = since.toISOString();
@@ -90,6 +95,7 @@ export async function fetchSuccessRate(days = 14): Promise<{ rate: number; done:
   const { data } = await supabase
     .from("tasks")
     .select("status, created_at")
+    .eq("user_id", userId)
     .gte("created_at", sinceISO);
 
   let done = 0;
@@ -103,7 +109,7 @@ export async function fetchSuccessRate(days = 14): Promise<{ rate: number; done:
 }
 
 export async function fetchRecentContext(days = 7) {
-  const supabase = createSupabaseServerClient();
+  const { supabase, userId } = await getServerDb();
   const since = new Date();
   since.setDate(since.getDate() - days);
   const sinceDate = since.toISOString().slice(0, 10);
@@ -112,23 +118,36 @@ export async function fetchRecentContext(days = 7) {
     supabase
       .from("daily_plans")
       .select("*")
+      .eq("user_id", userId)
       .gte("plan_date", sinceDate)
       .order("plan_date", { ascending: true }),
     supabase
       .from("tasks")
       .select("*")
+      .eq("user_id", userId)
       .gte("created_at", since.toISOString())
       .order("created_at", { ascending: true }),
     supabase
       .from("pointed_journal")
       .select("*")
+      .eq("user_id", userId)
       .gte("created_at", since.toISOString())
       .order("created_at", { ascending: true }),
-    supabase.from("rules").select("*").eq("is_active", true).order("priority"),
-    supabase.from("macro_goals").select("*").order("sort_order"),
+    supabase
+      .from("rules")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("is_active", true)
+      .order("priority"),
+    supabase
+      .from("macro_goals")
+      .select("*")
+      .eq("user_id", userId)
+      .order("sort_order"),
     supabase
       .from("analysis_runs")
       .select("*")
+      .eq("user_id", userId)
       .gte("run_date", sinceDate)
       .order("run_date", { ascending: true }),
   ]);
@@ -141,4 +160,30 @@ export async function fetchRecentContext(days = 7) {
     goals: (goals.data ?? []) as MacroGoal[],
     runs: (runs.data ?? []) as AnalysisRun[],
   };
+}
+
+export async function fetchJournalArchive(days = 90): Promise<PointedJournal[]> {
+  const { supabase, userId } = await getServerDb();
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+  const { data } = await supabase
+    .from("pointed_journal")
+    .select("*")
+    .eq("user_id", userId)
+    .gte("created_at", since.toISOString())
+    .order("created_at", { ascending: false });
+  return (data ?? []) as PointedJournal[];
+}
+
+export async function fetchAnalysisRunsArchive(
+  limit = 50,
+): Promise<AnalysisRun[]> {
+  const { supabase, userId } = await getServerDb();
+  const { data } = await supabase
+    .from("analysis_runs")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  return (data ?? []) as AnalysisRun[];
 }

@@ -18,7 +18,8 @@ framework end-to-end:
 | Layer    | Choice                             | Cost |
 | -------- | ---------------------------------- | ---- |
 | UI       | Next.js 14 (App Router) + Tailwind | free |
-| Backend  | Supabase (Postgres + Auth + RLS)   | free |
+| Database | Supabase Postgres                  | free |
+| Auth     | Username + password (app session)  | free |
 | Hosting  | Vercel                             | free |
 | AI       | Cursor Pro (copy/paste)            | uses your existing subscription |
 
@@ -28,17 +29,17 @@ No API keys. No cron jobs. No vector DB in v1.
 
 ```bash
 npm install
-cp .env.example .env.local      # then fill in URL + publishable key (sb_publishable_...)
+cp .env.example .env.local      # fill URL, publishable key, service role, SESSION_SECRET
 npm run dev
 ```
 
-Open <http://localhost:3000>. You'll be redirected to `/login`. Use **email + password**
+Open <http://localhost:3000>. You'll be redirected to `/login`. Use **username + password**
 (first visit: **Create account**, then **Sign in**).
 
 ## Supabase setup
 
-See [`supabase/README.md`](./supabase/README.md). TL;DR: in the SQL editor, run
-`migrations/0001_init.sql` then `migrations/0002_seed_fn.sql`. Email auth on.
+See [`supabase/README.md`](./supabase/README.md). Run migrations `0001`, `0002`, and `0003`.
+You need the **service role** secret in `.env.local` (server only — never expose in the client).
 
 On your first visit to `/today` the app calls `seed_user_defaults()` which inserts
 3 macro goals (RICH / MUSCULAR / INTELLIGENT), 6 starter NEW ME rules, and today's
@@ -62,9 +63,11 @@ default tasks.
 
 | Path                      | Purpose                                              |
 | ------------------------- | ---------------------------------------------------- |
-| `/login`                  | Email + password sign in / sign up                   |
+| `/login`                  | Username + password sign in / sign up                |
 | `/today`                  | The daily ritual                                     |
-| `/cursor`                 | In-app paste bridge to Cursor Pro                    |
+| `/journal`                | All pointed journal entries (Fix-Not-Fixate + ad-hoc) |
+| `/insights`               | All Cursor analysis runs (raw JSON preserved)        |
+| `/cursor`                 | Copy deep context → paste Cursor JSON back           |
 | `/rules`                  | Manage NEW ME codes (add / archive / re-prioritize)  |
 | `/goals`                  | Edit macro goals, deadlines, visual anchor URLs      |
 | `/history`                | Last 60 days, with per-day raw data + Cursor outputs |
@@ -79,7 +82,8 @@ default tasks.
   missed)`), with explicit "this is system health, not personal worth" framing.
 - **No blame UI.** Missed tasks open the Fix-Not-Fixate flow, asking only `trigger /
   thought / impact / repair / damage`. No "I failed" button.
-- **Single user but RLS-on.** Every table has a `auth.uid() = user_id` policy.
+- **Server-scoped data access.** Logged-in user id comes from an encrypted session cookie;
+  the server uses the Supabase service role and filters every query by `user_id`.
 
 ## v2 / v3 candidates (intentionally deferred)
 

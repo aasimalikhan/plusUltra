@@ -1,46 +1,38 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { usePathname } from "next/navigation";
+import { signOutAction } from "@/app/actions/auth";
+import { BrandLogo } from "@/components/BrandLogo";
 import { cn } from "@/lib/utils";
 
 const ITEMS = [
   { href: "/today", label: "Today" },
+  { href: "/journal", label: "Journal" },
   { href: "/cursor", label: "Cursor" },
+  { href: "/insights", label: "Insights" },
   { href: "/rules", label: "Rules" },
   { href: "/goals", label: "Goals" },
   { href: "/history", label: "History" },
 ];
 
-export function TopNav({ email }: { email: string | null }) {
+export function TopNav({ username }: { username: string }) {
   const pathname = usePathname();
-  const router = useRouter();
-
-  async function signOut() {
-    const supabase = createSupabaseBrowserClient();
-    await supabase.auth.signOut();
-    router.push("/login");
-    router.refresh();
-  }
 
   return (
-    <header className="sticky top-0 z-30 border-b border-bg-border bg-bg/85 backdrop-blur">
+    <header className="sticky top-0 z-30 border-b border-bg-border/80 bg-bg/90 shadow-[0_1px_0_hsl(0_0%_100%/0.03)] backdrop-blur-md">
       <div className="flex items-center justify-between px-4 py-3 sm:px-6">
-        <Link
-          href="/today"
-          className="text-sm font-semibold tracking-tight text-fg"
-        >
-          plusUltra
-        </Link>
-        <button
-          onClick={signOut}
-          className="text-xs text-fg-subtle transition-colors hover:text-fg"
-        >
-          {email ? "Sign out" : ""}
-        </button>
+        <BrandLogo />
+        <form action={signOutAction}>
+          <button
+            type="submit"
+            className="text-xs text-fg-subtle transition-colors hover:text-fg"
+          >
+            {username} · Sign out
+          </button>
+        </form>
       </div>
-      <nav className="flex gap-1 overflow-x-auto px-2 pb-2 sm:px-4">
+      <nav className="flex gap-0.5 overflow-x-auto px-2 pb-2.5 sm:px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {ITEMS.map((item) => {
           const active =
             pathname === item.href || pathname.startsWith(item.href + "/");
@@ -49,10 +41,10 @@ export function TopNav({ email }: { email: string | null }) {
               key={item.href}
               href={item.href}
               className={cn(
-                "rounded-md px-3 py-1.5 text-sm transition-colors",
+                "shrink-0 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
                 active
-                  ? "bg-bg-subtle text-fg"
-                  : "text-fg-subtle hover:bg-bg-subtle hover:text-fg",
+                  ? "bg-fg text-bg"
+                  : "text-fg-muted hover:bg-bg-subtle hover:text-fg",
               )}
             >
               {item.label}

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getServerDb } from "@/lib/db";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +12,7 @@ interface DayCell {
 }
 
 export default async function HistoryPage() {
-  const supabase = createSupabaseServerClient();
+  const { supabase, userId } = await getServerDb();
   const since = new Date();
   since.setDate(since.getDate() - 60);
   const sinceISO = since.toISOString();
@@ -20,12 +20,14 @@ export default async function HistoryPage() {
   const { data: plans } = await supabase
     .from("daily_plans")
     .select("plan_date, id, tasks(status)")
+    .eq("user_id", userId)
     .gte("plan_date", since.toISOString().slice(0, 10))
     .order("plan_date", { ascending: false });
 
   const { data: runs } = await supabase
     .from("analysis_runs")
     .select("run_date, id")
+    .eq("user_id", userId)
     .gte("created_at", sinceISO)
     .order("run_date", { ascending: false });
 
@@ -50,8 +52,15 @@ export default async function HistoryPage() {
         <p className="section-label">Archive</p>
         <h1 className="h1 mt-1">History</h1>
         <p className="mt-2 text-sm text-fg-muted">
-          Last 60 days. Click any date to see the raw tasks, journal entries,
-          and Cursor analysis runs that day.
+          Last 60 days. Click a date for that day&apos;s tasks + journal + runs. Or browse{" "}
+          <Link href="/journal" className="text-fg underline-offset-2 hover:underline">
+            all journal
+          </Link>{" "}
+          /{" "}
+          <Link href="/insights" className="text-fg underline-offset-2 hover:underline">
+            all analysis runs
+          </Link>
+          .
         </p>
       </div>
 

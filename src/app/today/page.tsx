@@ -1,5 +1,4 @@
-import { redirect } from "next/navigation";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/auth/user";
 import { ensureUserSeeded } from "@/lib/seed";
 import {
   fetchActiveRules,
@@ -19,17 +18,13 @@ import { SuccessRateBadge } from "@/components/SuccessRateBadge";
 import { AutoMissedQueue } from "@/components/AutoMissedQueue";
 import { AdHocJournalButton } from "@/components/AdHocJournalButton";
 import { ResolveJournalRow } from "@/components/ResolveJournalRow";
+import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
 export default async function TodayPage() {
-  const supabase = createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  await ensureUserSeeded(user.id);
+  const user = await requireUser();
+  await ensureUserSeeded(user.userId);
 
   const evening = isEvening();
   const missedJustNow = evening ? await autoMarkOverdueAsMissed() : [];
@@ -93,6 +88,15 @@ export default async function TodayPage() {
       )}
 
       <AdHocJournalButton />
+
+      <div className="flex flex-wrap gap-2 text-xs">
+        <Link href="/journal" className="pill transition-colors hover:bg-bg-subtle">
+          All journal entries →
+        </Link>
+        <Link href="/insights" className="pill transition-colors hover:bg-bg-subtle">
+          Analysis runs →
+        </Link>
+      </div>
 
       <AutoMissedQueue
         active={evening}

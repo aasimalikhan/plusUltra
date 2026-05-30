@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getServerDb } from "@/lib/db";
 import { formatDateISO } from "@/lib/utils";
 
 export interface JournalInput {
@@ -14,22 +14,18 @@ export interface JournalInput {
 }
 
 export async function logPointedJournal(input: JournalInput) {
-  const supabase = createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("not signed in");
+  const { supabase, userId } = await getServerDb();
 
   const planDate = formatDateISO();
   const { data: plan } = await supabase
     .from("daily_plans")
     .select("id")
-    .eq("user_id", user.id)
+    .eq("user_id", userId)
     .eq("plan_date", planDate)
     .maybeSingle();
 
   const { error } = await supabase.from("pointed_journal").insert({
-    user_id: user.id,
+    user_id: userId,
     daily_plan_id: plan?.id ?? null,
     related_task_id: input.related_task_id ?? null,
     trigger_event: input.trigger_event,
@@ -44,11 +40,12 @@ export async function logPointedJournal(input: JournalInput) {
 }
 
 export async function resolveJournalEntry(id: string, resolved: boolean) {
-  const supabase = createSupabaseServerClient();
+  const { supabase, userId } = await getServerDb();
   const { error } = await supabase
     .from("pointed_journal")
     .update({ is_resolved: resolved })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("user_id", userId);
   if (error) throw new Error(error.message);
   revalidatePath("/today");
   revalidatePath("/history");

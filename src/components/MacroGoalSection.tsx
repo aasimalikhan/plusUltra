@@ -1,12 +1,7 @@
 import type { MacroGoal, Task } from "@/lib/db-types";
+import { macroGoalPillClass } from "@/lib/macro-goal-ui";
 import { TaskRow } from "./TaskRow";
 import { AddTaskInline } from "./AddTaskInline";
-
-const PILL: Record<string, string> = {
-  RICH: "pill pill-rich",
-  MUSCULAR: "pill pill-muscular",
-  INTELLIGENT: "pill pill-intelligent",
-};
 
 export function MacroGoalSection({ goal, tasks }: { goal: MacroGoal; tasks: Task[] }) {
   const done = tasks.filter((t) => t.status === "done").length;
@@ -14,7 +9,7 @@ export function MacroGoalSection({ goal, tasks }: { goal: MacroGoal; tasks: Task
     <section className="card">
       <header className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <span className={PILL[goal.slug] ?? "pill"}>{goal.slug}</span>
+          <span className={macroGoalPillClass(goal.slug)}>{goal.slug}</span>
           <h3 className="h2">{goal.title}</h3>
         </div>
         <span className="font-mono text-xs text-fg-subtle">

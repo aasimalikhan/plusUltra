@@ -1,10 +1,5 @@
 import type { MacroGoal } from "@/lib/db-types";
-
-const PILL: Record<string, string> = {
-  RICH: "pill pill-rich",
-  MUSCULAR: "pill pill-muscular",
-  INTELLIGENT: "pill pill-intelligent",
-};
+import { macroGoalPillClass } from "@/lib/macro-goal-ui";
 
 function daysUntil(d: string | null): string | null {
   if (!d) return null;
@@ -19,7 +14,14 @@ function daysUntil(d: string | null): string | null {
 
 export function VisualAnchorWall({ goals }: { goals: MacroGoal[] }) {
   return (
-    <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+    <section
+      className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
+      style={
+        goals.length > 3
+          ? { gridTemplateColumns: "repeat(auto-fill, minmax(10rem, 1fr))" }
+          : undefined
+      }
+    >
       {goals.map((g) => {
         const dl = daysUntil(g.deadline);
         return (
@@ -36,7 +38,7 @@ export function VisualAnchorWall({ goals }: { goals: MacroGoal[] }) {
               />
             )}
             <div className="relative">
-              <span className={PILL[g.slug] ?? "pill"}>{g.slug}</span>
+              <span className={macroGoalPillClass(g.slug)}>{g.slug}</span>
             </div>
             <div className="relative">
               <h3 className="text-sm font-medium leading-tight tracking-tight text-fg">

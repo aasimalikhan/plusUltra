@@ -1,21 +1,23 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { updateGoal } from "@/app/actions/goals";
+import { deleteMacroGoal, updateGoal } from "@/app/actions/goals";
 import type { MacroGoal } from "@/lib/db-types";
+import { macroGoalPillClass } from "@/lib/macro-goal-ui";
 
-const PILL: Record<string, string> = {
-  RICH: "pill pill-rich",
-  MUSCULAR: "pill pill-muscular",
-  INTELLIGENT: "pill pill-intelligent",
-};
-
-export function GoalEditor({ goal }: { goal: MacroGoal }) {
+export function GoalEditor({
+  goal,
+  canDelete,
+}: {
+  goal: MacroGoal;
+  canDelete: boolean;
+}) {
   const [title, setTitle] = useState(goal.title);
   const [url, setUrl] = useState(goal.visual_anchor_url ?? "");
   const [deadline, setDeadline] = useState(goal.deadline ?? "");
   const [pending, startTransition] = useTransition();
   const [saved, setSaved] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   function save() {
     startTransition(async () => {
@@ -29,17 +31,47 @@ export function GoalEditor({ goal }: { goal: MacroGoal }) {
     });
   }
 
+  function remove() {
+    if (
+      !confirm(
+        `Delete pillar "${goal.slug}"? Tasks under it stay but lose their pillar link.`,
+      )
+    ) {
+      return;
+    }
+    startTransition(async () => {
+      const err = await deleteMacroGoal(goal.id);
+      setDeleteError(err);
+    });
+  }
+
   return (
     <section className="card space-y-3">
-      <div className="flex items-center gap-3">
-        <span className={PILL[goal.slug] ?? "pill"}>{goal.slug}</span>
-        {saved && <span className="text-xs text-emerald-400">saved</span>}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-3">
+          <span className={macroGoalPillClass(goal.slug)}>{goal.slug}</span>
+          {saved && <span className="text-xs text-emerald-400">saved</span>}
+        </div>
+        {canDelete && (
+          <button
+            type="button"
+            onClick={remove}
+            disabled={pending}
+            className="text-xs text-red-400/80 transition-colors hover:text-red-400"
+          >
+            Delete pillar
+          </button>
+        )}
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <label className="label">Title</label>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} className="input mt-1" />
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="input mt-1"
+          />
         </div>
         <div>
           <label className="label">Deadline (optional)</label>
@@ -73,9 +105,12 @@ export function GoalEditor({ goal }: { goal: MacroGoal }) {
         )}
       </div>
 
-      <button onClick={save} disabled={pending} className="btn btn-primary">
-        {pending ? "Saving…" : "Save"}
-      </button>
+      <div className="flex flex-wrap gap-2">
+        <button onClick={save} disabled={pending} className="btn btn-primary">
+          {pending ? "Saving…" : "Save"}
+        </button>
+      </div>
+      {deleteError && <p className="text-xs text-red-400">{deleteError}</p>}
     </section>
   );
 }

@@ -1,10 +1,12 @@
 import { type NextRequest } from "next/server";
-import { updateSession } from "@/lib/supabase/middleware";
+import { updateAuthSession } from "@/lib/auth/middleware";
 
 export async function middleware(request: NextRequest) {
-  return await updateSession(request);
+  return await updateAuthSession(request);
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|icons/.*|sw.js).*)"],
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|icons/.*|sw.js).*)",
+  ],
 };

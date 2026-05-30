@@ -1,6 +1,7 @@
 export type TaskStatus = "pending" | "done" | "missed";
 export type TaskSource = "manual" | "cursor";
-export type MacroGoalSlug = "RICH" | "MUSCULAR" | "INTELLIGENT";
+/** Uppercase slug stored on macro_goals (built-in or custom). */
+export type MacroGoalSlug = string;
 
 export interface MacroGoal {
   id: string;

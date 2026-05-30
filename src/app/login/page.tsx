@@ -1,15 +1,14 @@
+import { BrandLogo } from "@/components/BrandLogo";
 import { LoginForm } from "./LoginForm";
 
 export const metadata = { title: "plusUltra — Sign in" };
 
 export default function LoginPage() {
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-6 py-12">
-      <div className="mb-10 text-center">
-        <h1 className="text-3xl font-medium tracking-tight text-fg">
-          plusUltra
-        </h1>
-        <p className="mt-3 text-sm text-fg-muted">
+    <div className="relative mx-auto flex min-h-[calc(100vh-3rem)] w-full max-w-md flex-col justify-center px-6 py-12">
+      <div className="mb-10 flex flex-col items-center text-center">
+        <BrandLogo href="/login" size="hero" showWordmark />
+        <p className="mt-5 max-w-xs text-sm leading-relaxed text-fg-muted">
           Slave to the logical brain. Sign in to continue.
         </p>
       </div>

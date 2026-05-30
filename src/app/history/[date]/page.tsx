@@ -1,18 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getServerDb } from "@/lib/db";
 import type { AnalysisRun, MacroGoal, PointedJournal, Task } from "@/lib/db-types";
+import { macroGoalPillClass } from "@/lib/macro-goal-ui";
 
 export const dynamic = "force-dynamic";
 
-const PILL: Record<string, string> = {
-  RICH: "pill pill-rich",
-  MUSCULAR: "pill pill-muscular",
-  INTELLIGENT: "pill pill-intelligent",
-};
-
 export default async function HistoryDayPage({ params }: { params: { date: string } }) {
-  const supabase = createSupabaseServerClient();
+  const { supabase, userId } = await getServerDb();
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(params.date)) notFound();
 
@@ -20,9 +15,14 @@ export default async function HistoryDayPage({ params }: { params: { date: strin
     supabase
       .from("daily_plans")
       .select("*")
+      .eq("user_id", userId)
       .eq("plan_date", params.date)
       .maybeSingle(),
-    supabase.from("macro_goals").select("*").order("sort_order"),
+    supabase
+      .from("macro_goals")
+      .select("*")
+      .eq("user_id", userId)
+      .order("sort_order"),
   ]);
 
   if (!plan) {
@@ -43,16 +43,19 @@ export default async function HistoryDayPage({ params }: { params: { date: strin
     supabase
       .from("tasks")
       .select("*")
+      .eq("user_id", userId)
       .eq("daily_plan_id", plan.id)
       .order("created_at"),
     supabase
       .from("pointed_journal")
       .select("*")
+      .eq("user_id", userId)
       .eq("daily_plan_id", plan.id)
       .order("created_at", { ascending: false }),
     supabase
       .from("analysis_runs")
       .select("*")
+      .eq("user_id", userId)
       .eq("run_date", params.date)
       .order("created_at", { ascending: false }),
   ]);
@@ -110,7 +113,7 @@ export default async function HistoryDayPage({ params }: { params: { date: strin
                         : "·"}
                   </span>
                   {g && (
-                    <span className={PILL[g.slug] ?? "pill"}>{g.slug}</span>
+                    <span className={macroGoalPillClass(g.slug)}>{g.slug}</span>
                   )}
                   <span className="flex-1 text-fg">{t.task_name}</span>
                   {t.source === "cursor" && <span className="pill">cursor</span>}
