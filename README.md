@@ -32,8 +32,8 @@ cp .env.example .env.local      # then fill in URL + publishable key (sb_publish
 npm run dev
 ```
 
-Open <http://localhost:3000>. You'll be redirected to `/login`. Use your email; the magic
-link logs you in.
+Open <http://localhost:3000>. You'll be redirected to `/login`. Use **email + password**
+(first visit: **Create account**, then **Sign in**).
 
 ## Supabase setup
 
@@ -62,7 +62,7 @@ default tasks.
 
 | Path                      | Purpose                                              |
 | ------------------------- | ---------------------------------------------------- |
-| `/login`                  | Magic-link auth                                      |
+| `/login`                  | Email + password sign in / sign up                   |
 | `/today`                  | The daily ritual                                     |
 | `/cursor`                 | In-app paste bridge to Cursor Pro                    |
 | `/rules`                  | Manage NEW ME codes (add / archive / re-prioritize)  |

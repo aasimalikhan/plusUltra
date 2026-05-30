@@ -8,8 +8,11 @@ This directory holds the SQL migrations for plusUltra v1.
 2. In the project's **SQL Editor**, paste and run each file in order:
    - `migrations/0001_init.sql`
    - `migrations/0002_seed_fn.sql`
-3. Go to **Authentication > Providers** and confirm **Email** is enabled.
-   Disable "Confirm email" for fastest single-user setup, or keep it on if you prefer.
+3. Go to **Authentication → Providers → Email**:
+   - **Enable Email provider** = on
+   - **Confirm email** = off (so sign-up works instantly, no inbox needed)
+   - **Secure email change** = optional
+   Login uses **email + password** only (no magic links, no rate limits on OTP emails).
 4. Copy **Project URL** and **Publishable key** (`sb_publishable_...`) from **Settings → API**
    (or the Connect → Next.js modal) into `.env.local`:
 
@@ -26,6 +29,10 @@ This directory holds the SQL migrations for plusUltra v1.
    - 3 macro goals (RICH / MUSCULAR / INTELLIGENT)
    - 6 starter NEW ME rules
    - Today's daily plan with template tasks
+
+## Production deploy
+
+Set the same `NEXT_PUBLIC_SUPABASE_*` env vars on Vercel as in `.env.local`. No redirect URL setup needed for password login.
 
 ## Re-running migrations
 
