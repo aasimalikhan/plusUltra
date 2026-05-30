@@ -1,0 +1,114 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+
+    /* surfaces */
+    --bg: 0 0% 4%;
+    --bg-subtle: 0 0% 7%;
+    --bg-card: 0 0% 6%;
+    --bg-border: 0 0% 14%;
+
+    /* text */
+    --fg: 0 0% 96%;
+    --fg-muted: 0 0% 64%;
+    --fg-subtle: 0 0% 45%;
+
+    /* pillar accents (kept low-saturation) */
+    --accent-rich: 38 65% 55%;
+    --accent-muscular: 0 70% 55%;
+    --accent-intelligent: 215 70% 60%;
+  }
+
+  * {
+    border-color: hsl(var(--bg-border));
+  }
+
+  html,
+  body {
+    background: hsl(var(--bg));
+    color: hsl(var(--fg));
+    min-height: 100vh;
+    font-family:
+      "Helvetica Neue",
+      Helvetica,
+      Arial,
+      "Liberation Sans",
+      sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: hsl(var(--fg) / 0.18);
+    color: hsl(var(--fg));
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-lg border border-bg-border bg-bg-card p-5;
+  }
+
+  .btn {
+    @apply inline-flex select-none items-center justify-center gap-2 whitespace-nowrap rounded-md
+           border border-bg-border bg-transparent px-4 py-2 text-sm font-medium text-fg
+           transition-colors hover:bg-bg-subtle hover:border-fg-subtle/40
+           focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-fg/40
+           disabled:pointer-events-none disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply border-fg bg-fg text-bg hover:bg-fg/90 hover:border-fg/90;
+  }
+  .btn-danger {
+    @apply border-red-500/70 bg-red-600/90 text-white hover:bg-red-600 hover:border-red-500;
+  }
+  .btn-ghost {
+    @apply border-transparent bg-transparent hover:bg-bg-subtle hover:border-bg-border;
+  }
+
+  .input {
+    @apply w-full rounded-md border border-bg-border bg-bg-subtle px-3 py-2 text-sm text-fg
+           placeholder:text-fg-subtle
+           focus:border-fg-muted focus:outline-none focus:ring-1 focus:ring-fg-muted/40;
+  }
+
+  .label {
+    @apply text-[11px] font-medium uppercase tracking-wider text-fg-muted;
+  }
+
+  .pill {
+    @apply inline-flex items-center rounded-md border border-bg-border bg-bg-subtle px-2 py-0.5
+           text-[10px] font-medium uppercase tracking-wider text-fg-muted;
+  }
+  .pill-rich {
+    color: hsl(var(--accent-rich));
+    border-color: hsl(var(--accent-rich) / 0.4);
+    background-color: hsl(var(--accent-rich) / 0.08);
+  }
+  .pill-muscular {
+    color: hsl(var(--accent-muscular));
+    border-color: hsl(var(--accent-muscular) / 0.4);
+    background-color: hsl(var(--accent-muscular) / 0.08);
+  }
+  .pill-intelligent {
+    color: hsl(var(--accent-intelligent));
+    border-color: hsl(var(--accent-intelligent) / 0.4);
+    background-color: hsl(var(--accent-intelligent) / 0.08);
+  }
+
+  .section-label {
+    @apply text-[10px] font-medium uppercase tracking-[0.18em] text-fg-muted;
+  }
+
+  .h1 {
+    @apply text-2xl font-medium tracking-tight text-fg;
+  }
+  .h2 {
+    @apply text-sm font-medium tracking-tight text-fg;
+  }
+}

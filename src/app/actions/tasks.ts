@@ -1,0 +1,87 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { formatDateISO } from "@/lib/utils";
+import type { TaskStatus } from "@/lib/db-types";
+
+export async function setTaskStatus(taskId: string, status: TaskStatus) {
+  const supabase = createSupabaseServerClient();
+  const completed_at = status === "done" ? new Date().toISOString() : null;
+  const { error } = await supabase
+    .from("tasks")
+    .update({ status, completed_at })
+    .eq("id", taskId);
+  if (error) throw new Error(error.message);
+  revalidatePath("/today");
+  revalidatePath("/history");
+}
+
+export async function addTaskToToday(formData: FormData) {
+  const supabase = createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("not signed in");
+
+  const task_name = String(formData.get("task_name") ?? "").trim();
+  const macro_goal_id = String(formData.get("macro_goal_id") ?? "") || null;
+  if (!task_name) return;
+
+  const planDate = formatDateISO();
+  const { data: plan, error: planErr } = await supabase
+    .from("daily_plans")
+    .upsert(
+      { user_id: user.id, plan_date: planDate },
+      { onConflict: "user_id,plan_date" },
+    )
+    .select("id")
+    .single();
+  if (planErr || !plan) throw new Error(planErr?.message ?? "no plan");
+
+  const { error } = await supabase.from("tasks").insert({
+    user_id: user.id,
+    daily_plan_id: plan.id,
+    macro_goal_id,
+    task_name,
+    source: "manual",
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/today");
+}
+
+export async function deleteTask(taskId: string) {
+  const supabase = createSupabaseServerClient();
+  const { error } = await supabase.from("tasks").delete().eq("id", taskId);
+  if (error) throw new Error(error.message);
+  revalidatePath("/today");
+}
+
+export async function autoMarkOverdueAsMissed() {
+  const supabase = createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  const today = formatDateISO();
+  const { data: plan } = await supabase
+    .from("daily_plans")
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("plan_date", today)
+    .maybeSingle();
+  if (!plan) return [];
+
+  const { data: missed, error } = await supabase
+    .from("tasks")
+    .update({ status: "missed" })
+    .eq("daily_plan_id", plan.id)
+    .eq("status", "pending")
+    .select("id, task_name, macro_goal_id");
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/today");
+  return missed ?? [];
+}
