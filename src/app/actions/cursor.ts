@@ -140,6 +140,7 @@ export async function applyCursorPlan(opts: {
   revalidatePath("/rules");
   revalidatePath("/history");
   revalidatePath("/cursor");
+  revalidatePath("/deadlines");
 
   return { ok: true, runId: run?.id, tasksCreated };
 }

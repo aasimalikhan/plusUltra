@@ -71,6 +71,38 @@ export interface AnalysisRun {
   created_at: string;
 }
 
+export type DeadlineGoalStatus = "active" | "completed" | "paused";
+
+export interface DeadlineGoal {
+  id: string;
+  user_id: string;
+  title: string;
+  target_date: string;
+  importance: number;
+  macro_goal_id: string | null;
+  implementation_notes: string | null;
+  status: DeadlineGoalStatus;
+  sort_order: number;
+  completed_at: string | null;
+  created_at: string;
+}
+
+export interface DeadlineMilestone {
+  id: string;
+  user_id: string;
+  deadline_goal_id: string;
+  title: string;
+  target_date: string | null;
+  is_done: boolean;
+  completed_at: string | null;
+  sort_order: number;
+  created_at: string;
+}
+
+export interface DeadlineGoalWithMilestones extends DeadlineGoal {
+  milestones: DeadlineMilestone[];
+}
+
 export interface CursorPlan {
   summary: string;
   cited_journal_ids?: string[];

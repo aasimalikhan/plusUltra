@@ -9,7 +9,8 @@ export function TaskRow({ task }: { task: Task }) {
   const [pending, startTransition] = useTransition();
 
   function toggle() {
-    const next: TaskStatus = task.status === "done" ? "pending" : "done";
+    const next: TaskStatus =
+      task.status === "done" ? "pending" : "done";
     startTransition(async () => {
       await setTaskStatus(task.id, next);
     });
@@ -34,7 +35,9 @@ export function TaskRow({ task }: { task: Task }) {
     >
       <button
         type="button"
-        aria-label={done ? "mark not done" : "mark done"}
+        aria-label={
+          done ? "mark not done" : missed ? "mark done (was missed)" : "mark done"
+        }
         onClick={toggle}
         className={cn(
           "flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-sm border transition-colors",

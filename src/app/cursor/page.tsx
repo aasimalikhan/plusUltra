@@ -25,7 +25,7 @@ export default async function CursorPage() {
           and 7 days of live data so the model is not flying blind.
         </p>
         <p className="mt-1 text-xs text-fg-subtle">
-          Journal archive: /journal · Past runs: /insights · Day detail: /history/[date]
+          Journal archive: /journal · Past runs: /insights · Deadlines: /deadlines · Day detail: /history/[date]
         </p>
       </div>
 

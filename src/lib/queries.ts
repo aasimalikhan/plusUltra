@@ -1,5 +1,6 @@
 import { getServerDb } from "@/lib/db";
 import { formatDateISO } from "@/lib/utils";
+import { urgencyScore } from "@/lib/deadline-utils";
 import type {
   MacroGoal,
   Task,
@@ -7,6 +8,9 @@ import type {
   PointedJournal,
   DailyPlan,
   AnalysisRun,
+  DeadlineGoal,
+  DeadlineMilestone,
+  DeadlineGoalWithMilestones,
 } from "@/lib/db-types";
 
 export async function fetchActiveRules(): Promise<Rule[]> {
@@ -108,13 +112,52 @@ export async function fetchSuccessRate(
   return { rate: total === 0 ? 0 : done / total, done, missed };
 }
 
+export async function fetchDeadlineGoals(
+  status: "active" | "completed" | "paused" | "all" = "active",
+): Promise<DeadlineGoalWithMilestones[]> {
+  const { supabase, userId } = await getServerDb();
+
+  let q = supabase
+    .from("deadline_goals")
+    .select("*")
+    .eq("user_id", userId)
+    .order("target_date", { ascending: true });
+
+  if (status !== "all") q = q.eq("status", status);
+
+  const { data: goals } = await q;
+  const goalRows = (goals ?? []) as DeadlineGoal[];
+  if (goalRows.length === 0) return [];
+
+  const goalIds = goalRows.map((g) => g.id);
+  const { data: milestones } = await supabase
+    .from("deadline_milestones")
+    .select("*")
+    .eq("user_id", userId)
+    .in("deadline_goal_id", goalIds)
+    .order("sort_order", { ascending: true });
+
+  const byGoal = new Map<string, DeadlineMilestone[]>();
+  for (const m of (milestones ?? []) as DeadlineMilestone[]) {
+    if (!byGoal.has(m.deadline_goal_id)) byGoal.set(m.deadline_goal_id, []);
+    byGoal.get(m.deadline_goal_id)!.push(m);
+  }
+
+  return goalRows
+    .map((g) => ({
+      ...g,
+      milestones: byGoal.get(g.id) ?? [],
+    }))
+    .sort((a, b) => urgencyScore(b) - urgencyScore(a));
+}
+
 export async function fetchRecentContext(days = 7) {
   const { supabase, userId } = await getServerDb();
   const since = new Date();
   since.setDate(since.getDate() - days);
   const sinceDate = since.toISOString().slice(0, 10);
 
-  const [plans, tasks, journal, rules, goals, runs] = await Promise.all([
+  const [plans, tasks, journal, rules, goals, runs, deadlines] = await Promise.all([
     supabase
       .from("daily_plans")
       .select("*")
@@ -150,6 +193,7 @@ export async function fetchRecentContext(days = 7) {
       .eq("user_id", userId)
       .gte("run_date", sinceDate)
       .order("run_date", { ascending: true }),
+    fetchDeadlineGoals("active"),
   ]);
 
   return {
@@ -159,6 +203,7 @@ export async function fetchRecentContext(days = 7) {
     rules: (rules.data ?? []) as Rule[],
     goals: (goals.data ?? []) as MacroGoal[],
     runs: (runs.data ?? []) as AnalysisRun[],
+    deadlines,
   };
 }
 

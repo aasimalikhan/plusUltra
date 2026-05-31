@@ -4,6 +4,10 @@ out
 .env
 .env.local
 .env.*.local
+
+# Cursor IDE / chat-uploaded assets (keep out of repo)
+.cursor/
+assets/
 *.log
 .DS_Store
 .vercel

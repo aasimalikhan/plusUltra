@@ -65,11 +65,11 @@ export async function autoMarkOverdueAsMissed() {
   const today = formatDateISO();
   const { data: plan } = await supabase
     .from("daily_plans")
-    .select("id")
+    .select("id, is_locked")
     .eq("user_id", userId)
     .eq("plan_date", today)
     .maybeSingle();
-  if (!plan) return [];
+  if (!plan || plan.is_locked) return [];
 
   const { data: missed, error } = await supabase
     .from("tasks")
@@ -79,6 +79,13 @@ export async function autoMarkOverdueAsMissed() {
     .eq("status", "pending")
     .select("id, task_name, macro_goal_id");
   if (error) throw new Error(error.message);
+
+  const { error: lockErr } = await supabase
+    .from("daily_plans")
+    .update({ is_locked: true })
+    .eq("id", plan.id)
+    .eq("user_id", userId);
+  if (lockErr) throw new Error(lockErr.message);
 
   revalidatePath("/today");
   return missed ?? [];

@@ -2,11 +2,18 @@ import { PLUSULTRA_APP_BRIEFING } from "@/lib/app-briefing";
 import type {
   AnalysisRun,
   DailyPlan,
+  DeadlineGoalWithMilestones,
   MacroGoal,
   PointedJournal,
   Rule,
   Task,
 } from "@/lib/db-types";
+import {
+  daysUntilDate,
+  formatDaysUntil,
+  importanceLabel,
+  milestoneProgress,
+} from "@/lib/deadline-utils";
 
 export interface ContextBundle {
   plans: DailyPlan[];
@@ -15,20 +22,23 @@ export interface ContextBundle {
   rules: Rule[];
   goals: MacroGoal[];
   runs: AnalysisRun[];
+  deadlines: DeadlineGoalWithMilestones[];
 }
 
 export const CURSOR_ANALYST_PROMPT = `You are the nightly **logical-brain analyst** for plusUltra (see SYSTEM briefing above).
 
 Read LIVE DATA: last 7 days of tasks (done/missed/pending), pointed journal (triggers, thoughts,
 emotional impact %, repairs, schemas), active NEW ME rules (with ids), macro goals + deadlines,
+deadline goals (V.IMP — importance, target dates, milestone progress, implementation notes),
 and prior analysis run summaries.
 
 Your job:
 1. Identify failure patterns and recurring triggers across the week. Cite specific journal IDs and task IDs.
 2. Mutate TOMORROW's task list under the user's macro_goal_slug values listed in LIVE DATA. Pivot on evidence — fix not fixate.
-3. Update NEW ME rules: add for repeated patterns; demote stale (higher priority number); deactivate
+3. Prioritize tomorrow's tasks toward active deadline goals — **deadlines are God**. Overdue or <14d deadlines with low milestone progress need direct daily work, not tangential tasks.
+4. Update NEW ME rules: add for repeated patterns; demote stale (higher priority number); deactivate
    resolved patterns by id.
-4. Never blame. No generic motivation. Linear, specific, system-focused language only.
+5. Never blame. No generic motivation. Linear, specific, system-focused language only.
 
 Constraints:
 - Return ONLY valid JSON. No prose around it. No markdown fences.
@@ -46,11 +56,41 @@ Constraints:
 }`;
 
 export function buildCursorContextMarkdown(bundle: ContextBundle): string {
-  const { plans, tasks, journal, rules, goals, runs } = bundle;
+  const { plans, tasks, journal, rules, goals, runs, deadlines } = bundle;
 
   const lines: string[] = [];
   lines.push(`# LIVE DATA · generated ${new Date().toISOString()}`);
-  lines.push(`Plans in window: ${plans.length} · Tasks: ${tasks.length} · Journal entries: ${journal.length} · Prior runs: ${runs.length}`);
+  lines.push(
+    `Plans in window: ${plans.length} · Tasks: ${tasks.length} · Journal entries: ${journal.length} · Prior runs: ${runs.length} · Active deadlines: ${deadlines.length}`,
+  );
+  lines.push("");
+
+  lines.push("## Deadline goals · V.IMP (deadlines are God — prioritize tomorrow toward these)");
+  if (deadlines.length === 0) {
+    lines.push("- (none active — user should add on /deadlines)");
+  } else {
+    const goalById = new Map(goals.map((g) => [g.id, g] as const));
+    for (const d of deadlines) {
+      const days = daysUntilDate(d.target_date);
+      const countdown = formatDaysUntil(d.target_date) ?? "?";
+      const progress = milestoneProgress(d.milestones);
+      const pillar = d.macro_goal_id
+        ? (goalById.get(d.macro_goal_id)?.slug ?? "—")
+        : "—";
+      const overdue = days !== null && days < 0 ? " · OVERDUE" : "";
+      lines.push(
+        `- (id:${d.id}) **${d.title}** · ${d.target_date} (${countdown})${overdue} · importance ${d.importance}/5 (${importanceLabel(d.importance)}) · pillar ${pillar} · progress ${progress}% (${d.milestones.filter((m) => m.is_done).length}/${d.milestones.length} milestones)`,
+      );
+      if (d.implementation_notes) {
+        lines.push(`  - implementation: ${d.implementation_notes}`);
+      }
+      for (const m of d.milestones) {
+        lines.push(
+          `  - [${m.is_done ? "done" : "pending"}] (milestone id:${m.id}) ${m.title}${m.target_date ? ` · by ${m.target_date}` : ""}`,
+        );
+      }
+    }
+  }
   lines.push("");
 
   lines.push("## Macro goals (valid macro_goal_slug values for tomorrow_tasks)");

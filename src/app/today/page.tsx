@@ -2,6 +2,7 @@ import { requireUser } from "@/lib/auth/user";
 import { ensureUserSeeded } from "@/lib/seed";
 import {
   fetchActiveRules,
+  fetchDeadlineGoals,
   fetchMacroGoals,
   fetchOrCreateTodayPlan,
   fetchSuccessRate,
@@ -12,6 +13,7 @@ import { autoMarkOverdueAsMissed } from "@/app/actions/tasks";
 import { isEvening } from "@/lib/utils";
 
 import { RulesBanner } from "@/components/RulesBanner";
+import { DeadlineStrip } from "@/components/DeadlineStrip";
 import { VisualAnchorWall } from "@/components/VisualAnchorWall";
 import { MacroGoalSection } from "@/components/MacroGoalSection";
 import { SuccessRateBadge } from "@/components/SuccessRateBadge";
@@ -29,11 +31,12 @@ export default async function TodayPage() {
   const evening = isEvening();
   const missedJustNow = evening ? await autoMarkOverdueAsMissed() : [];
 
-  const [rules, goals, plan, rate] = await Promise.all([
+  const [rules, goals, plan, rate, deadlines] = await Promise.all([
     fetchActiveRules(),
     fetchMacroGoals(),
     fetchOrCreateTodayPlan(),
     fetchSuccessRate(14),
+    fetchDeadlineGoals("active"),
   ]);
 
   const tasks = plan ? await fetchTasksForPlan(plan.id) : [];
@@ -68,6 +71,8 @@ export default async function TodayPage() {
 
       <RulesBanner rules={rules} />
 
+      <DeadlineStrip deadlines={deadlines} />
+
       <VisualAnchorWall goals={goals} />
 
       <div className="space-y-4">
@@ -90,6 +95,9 @@ export default async function TodayPage() {
       <AdHocJournalButton />
 
       <div className="flex flex-wrap gap-2 text-xs">
+        <Link href="/deadlines" className="pill transition-colors hover:bg-bg-subtle">
+          Deadlines →
+        </Link>
         <Link href="/journal" className="pill transition-colors hover:bg-bg-subtle">
           All journal entries →
         </Link>

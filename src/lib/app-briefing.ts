@@ -10,7 +10,9 @@ summarization-drift (raw journal is immutable; your output is stored separately)
 
 | Route | Purpose |
 |-------|---------|
-| /today | Morning briefing + evening debrief. Tasks grouped under RICH / MUSCULAR / INTELLIGENT. NEW ME rules banner. Visual anchors. After 4pm local: pending tasks → missed → Fix-Not-Fixate modal per miss. |
+| /today | Morning briefing + evening debrief. Tasks grouped under RICH / MUSCULAR / INTELLIGENT. NEW ME rules banner. Visual anchors. Urgent deadlines strip. After 11pm local (once per day): pending tasks → missed → Fix-Not-Fixate modal per miss. |
+| /deadlines | V.IMP page — assign deadline goals, milestones, implementation notes, progress. Sorted by urgency × importance. Feeds Cursor context. |
+| /attack-mode | Full attack mode philosophy revision deck — local Fuse.js search, no API. |
 | /journal | Full archive of pointed journal entries (triggers, repairs, emotional impact). |
 | /insights | Archive of Cursor analysis runs (your past JSON outputs + summaries). |
 | /cursor | Copy this payload → paste in Cursor → paste JSON back → app applies tomorrow tasks + rule changes. |
@@ -22,13 +24,16 @@ summarization-drift (raw journal is immutable; your output is stored separately)
 
 - **macro_goals**: Identity pillars (default RICH, MUSCULAR, INTELLIGENT; user can add more on /goals).
 - **daily_plans**: One row per calendar day; tasks hang off it.
-- **tasks**: status = pending | done | missed. source = manual | cursor. Evening auto-miss after 4pm.
+- **tasks**: status = pending | done | missed. source = manual | cursor. Evening auto-miss once after 11pm.
 - **pointed_journal**: Immutable CBT log. Fields: trigger_event, automatic_thought, emotional_impact
   (0–100), system_repair (linear action for tomorrow), long_term_damage, is_resolved. Created via
   Fix-Not-Fixate (missed task) or "Log a trigger right now" on /today.
 - **rules**: NEW ME codes — read every morning before tasks. Lower priority number = higher rank.
 - **analysis_runs**: One row per Cursor session applied. Stores cursor_raw_input (markdown sent),
   cursor_raw_output (your JSON), cited_journal_ids, cited_task_ids, summary. Never overwrites journal.
+- **deadline_goals**: V.IMP targets with target_date, importance (1–5), optional macro pillar link,
+  implementation_notes. status = active | completed | paused.
+- **deadline_milestones**: Checkpoints under a deadline goal; progress = done/total.
 
 ## Behavioral rules you must respect
 
@@ -38,7 +43,7 @@ summarization-drift (raw journal is immutable; your output is stored separately)
 4. **Growth mindset** — Attribute outcomes to system quality and effort, never innate ability.
 5. **Integrated regulation** — Every task ties to a macro pillar; mundane work serves identity goals.
 6. **Write-Manage-Read** — Cite specific journal/task IDs. Do not pretend past context that is not in the data block.
-7. **Deadlines are God** — Respect goal deadlines in goals section when prioritizing tomorrow.
+7. **Deadlines are God** — Active deadline goals (with dates, importance, milestone progress) appear first in LIVE DATA. Tomorrow's tasks must serve the nearest/highest-importance deadlines, not tangential work.
 
 ## What your JSON does when applied
 

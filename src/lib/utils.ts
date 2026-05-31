@@ -14,6 +14,9 @@ export function hourLocal(d: Date = new Date()): number {
   return d.getHours();
 }
 
+/** Local hour when evening debrief starts (auto-miss pending tasks + journal UI). */
+export const EVENING_DEBRIEF_HOUR = 23;
+
 export function isEvening(d: Date = new Date()): boolean {
-  return hourLocal(d) >= 16;
+  return hourLocal(d) >= EVENING_DEBRIEF_HOUR;
 }
