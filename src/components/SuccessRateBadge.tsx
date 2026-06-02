@@ -2,11 +2,13 @@ export function SuccessRateBadge({
   rate,
   done,
   missed,
+  pending = 0,
   windowDays = 14,
 }: {
   rate: number;
   done: number;
   missed: number;
+  pending?: number;
   windowDays?: number;
 }) {
   const pct = Math.round(rate * 100);
@@ -40,6 +42,12 @@ export function SuccessRateBadge({
       <div className="text-right text-xs text-fg-muted">
         <p className="font-mono text-fg">
           {done} done · {missed} missed
+          {pending > 0 && (
+            <span className="text-amber-300/90"> · {pending} still open</span>
+          )}
+        </p>
+        <p className="mt-0.5 text-[10px] text-fg-subtle">
+          Rate uses done ÷ (done + missed) — open tasks excluded until locked
         </p>
         <p className="mt-1 flex items-center justify-end gap-2 text-[11px] italic text-fg-muted">
           <span className={`inline-block h-1.5 w-1.5 rounded-full ${dot}`} />

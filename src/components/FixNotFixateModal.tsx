@@ -7,6 +7,7 @@ import { logPointedJournal } from "@/app/actions/journal";
 export interface MissedTaskLite {
   id: string;
   task_name: string;
+  plan_date?: string;
 }
 
 export function FixNotFixateModal({
@@ -94,6 +95,11 @@ export function FixNotFixateModal({
           >
             {current.task_name}
           </h3>
+          {"plan_date" in current && current.plan_date ? (
+            <p className="mt-0.5 font-mono text-[10px] text-fg-subtle">
+              from {current.plan_date}
+            </p>
+          ) : null}
           <p className="mt-1 text-xs text-fg-muted">
             It is okay. We do not blame. Acknowledge the damage, write the linear
             repair, move on.

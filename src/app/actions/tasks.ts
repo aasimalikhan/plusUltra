@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getServerDb } from "@/lib/db";
-import { formatDateISO } from "@/lib/utils";
+import { formatDateISO, isEvening } from "@/lib/utils";
 import type { TaskStatus } from "@/lib/db-types";
 
 export async function setTaskStatus(taskId: string, status: TaskStatus) {
@@ -59,22 +59,15 @@ export async function deleteTask(taskId: string) {
   revalidatePath("/today");
 }
 
-export async function autoMarkOverdueAsMissed() {
-  const { supabase, userId } = await getServerDb();
-
-  const today = formatDateISO();
-  const { data: plan } = await supabase
-    .from("daily_plans")
-    .select("id, is_locked")
-    .eq("user_id", userId)
-    .eq("plan_date", today)
-    .maybeSingle();
-  if (!plan || plan.is_locked) return [];
-
+async function lockPlanAndMissPending(
+  supabase: Awaited<ReturnType<typeof getServerDb>>["supabase"],
+  userId: string,
+  planId: string,
+) {
   const { data: missed, error } = await supabase
     .from("tasks")
     .update({ status: "missed" })
-    .eq("daily_plan_id", plan.id)
+    .eq("daily_plan_id", planId)
     .eq("user_id", userId)
     .eq("status", "pending")
     .select("id, task_name, macro_goal_id");
@@ -83,10 +76,58 @@ export async function autoMarkOverdueAsMissed() {
   const { error: lockErr } = await supabase
     .from("daily_plans")
     .update({ is_locked: true })
-    .eq("id", plan.id)
+    .eq("id", planId)
     .eq("user_id", userId);
   if (lockErr) throw new Error(lockErr.message);
 
-  revalidatePath("/today");
   return missed ?? [];
+}
+
+/** Flip pending → missed on any past unlocked day, then today after 11pm. */
+export async function autoMarkOverdueAsMissed() {
+  const { supabase, userId } = await getServerDb();
+  const today = formatDateISO();
+  const evening = isEvening();
+  const allMissed: { id: string; task_name: string; macro_goal_id: string | null }[] = [];
+
+  const { data: stalePlans } = await supabase
+    .from("daily_plans")
+    .select("id")
+    .eq("user_id", userId)
+    .lt("plan_date", today)
+    .eq("is_locked", false);
+
+  for (const plan of stalePlans ?? []) {
+    const missed = await lockPlanAndMissPending(supabase, userId, plan.id);
+    allMissed.push(...missed);
+  }
+
+  if (evening) {
+    const { data: todayPlan } = await supabase
+      .from("daily_plans")
+      .select("id, is_locked")
+      .eq("user_id", userId)
+      .eq("plan_date", today)
+      .maybeSingle();
+
+    if (todayPlan && !todayPlan.is_locked) {
+      const missed = await lockPlanAndMissPending(supabase, userId, todayPlan.id);
+      allMissed.push(...missed);
+    }
+  }
+
+  if (allMissed.length > 0) revalidatePath("/today");
+  revalidatePath("/history");
+  return allMissed;
+}
+
+export async function addTaskToTomorrow(formData: FormData) {
+  const { supabase, userId } = await getServerDb();
+  const task_name = String(formData.get("task_name") ?? "").trim();
+  const macro_goal_id = String(formData.get("macro_goal_id") ?? "") || null;
+  if (!task_name) return;
+
+  const { ensureTomorrowRepairTask } = await import("@/lib/tomorrow-tasks");
+  await ensureTomorrowRepairTask(supabase, userId, { task_name, macro_goal_id });
+  revalidatePath("/today");
 }

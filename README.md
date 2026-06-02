@@ -51,8 +51,10 @@ default tasks.
    badge, see the day's tasks under each macro pillar.
 2. **Through the day**: hit "Log a trigger right now" on `/today` whenever something
    derails you. Mark tasks done as you finish them.
-3. **Evening** (`/today` after 4pm): anything still `pending` flips to `missed` and a
-   modal walks you through one repair per missed task. No blame, no streak.
+3. **Evening** (`/today` from 6pm, auto-miss at **11pm**): debrief checklist guides
+   journal → Cursor. Pending tasks flip to `missed` on first visit after 11pm (or
+   any past day you skipped). Fix-Not-Fixate modal reopens until every miss has a
+   journal entry. Repairs auto-queue as tomorrow's tasks.
 4. **End of day** (`/cursor`):
    1. Click **Copy prompt + context**.
    2. Open a new Cursor chat, paste, send.

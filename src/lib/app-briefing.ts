@@ -10,7 +10,7 @@ summarization-drift (raw journal is immutable; your output is stored separately)
 
 | Route | Purpose |
 |-------|---------|
-| /today | Morning briefing + evening debrief. Tasks grouped under RICH / MUSCULAR / INTELLIGENT. NEW ME rules banner. Visual anchors. Urgent deadlines strip. After 11pm local (once per day): pending tasks → missed → Fix-Not-Fixate modal per miss. |
+| /today | Morning briefing + evening debrief (panel from 6pm). Tasks under RICH / MUSCULAR / INTELLIGENT. After 11pm: pending → missed + day lock. Debrief checklist: journal all misses (re-openable) → /cursor. Repairs auto-queue for tomorrow. |
 | /deadlines | V.IMP page — assign deadline goals, milestones, implementation notes, progress. Sorted by urgency × importance. Feeds Cursor context. |
 | /attack-mode | Full attack mode philosophy revision deck — local Fuse.js search, no API. |
 | /journal | Full archive of pointed journal entries (triggers, repairs, emotional impact). |

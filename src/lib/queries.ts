@@ -1,5 +1,5 @@
 import { getServerDb } from "@/lib/db";
-import { formatDateISO } from "@/lib/utils";
+import { formatDateISO, tomorrowDateISO } from "@/lib/utils";
 import { urgencyScore } from "@/lib/deadline-utils";
 import type {
   MacroGoal,
@@ -90,7 +90,7 @@ export async function fetchUnresolvedJournalToday(
 
 export async function fetchSuccessRate(
   days = 14,
-): Promise<{ rate: number; done: number; missed: number }> {
+): Promise<{ rate: number; done: number; missed: number; pending: number }> {
   const { supabase, userId } = await getServerDb();
   const since = new Date();
   since.setDate(since.getDate() - days);
@@ -104,12 +104,124 @@ export async function fetchSuccessRate(
 
   let done = 0;
   let missed = 0;
+  let pending = 0;
   for (const row of data ?? []) {
     if (row.status === "done") done++;
     else if (row.status === "missed") missed++;
+    else if (row.status === "pending") pending++;
   }
   const total = done + missed;
-  return { rate: total === 0 ? 0 : done / total, done, missed };
+  return { rate: total === 0 ? 0 : done / total, done, missed, pending };
+}
+
+export interface TodayExecution {
+  done: number;
+  pending: number;
+  missed: number;
+}
+
+export async function fetchTodayExecution(planId: string): Promise<TodayExecution> {
+  const { supabase, userId } = await getServerDb();
+  const { data } = await supabase
+    .from("tasks")
+    .select("status")
+    .eq("user_id", userId)
+    .eq("daily_plan_id", planId);
+
+  let done = 0;
+  let pending = 0;
+  let missed = 0;
+  for (const row of data ?? []) {
+    if (row.status === "done") done++;
+    else if (row.status === "missed") missed++;
+    else pending++;
+  }
+  return { done, pending, missed };
+}
+
+export interface MissedTaskNeedingJournal {
+  id: string;
+  task_name: string;
+  plan_date: string;
+}
+
+/** Missed tasks from the last N days with no linked journal entry. */
+export async function fetchMissedTasksNeedingJournal(
+  daysBack = 7,
+): Promise<MissedTaskNeedingJournal[]> {
+  const { supabase, userId } = await getServerDb();
+  const since = new Date();
+  since.setDate(since.getDate() - daysBack);
+  const sinceDate = since.toISOString().slice(0, 10);
+
+  const { data: plans } = await supabase
+    .from("daily_plans")
+    .select("id, plan_date")
+    .eq("user_id", userId)
+    .gte("plan_date", sinceDate);
+
+  if (!plans?.length) return [];
+
+  const planIds = plans.map((p) => p.id);
+  const planDateById = new Map(plans.map((p) => [p.id, p.plan_date as string]));
+
+  const [{ data: missedTasks }, { data: journaled }] = await Promise.all([
+    supabase
+      .from("tasks")
+      .select("id, task_name, daily_plan_id")
+      .eq("user_id", userId)
+      .in("daily_plan_id", planIds)
+      .eq("status", "missed"),
+    supabase
+      .from("pointed_journal")
+      .select("related_task_id")
+      .eq("user_id", userId)
+      .not("related_task_id", "is", null),
+  ]);
+
+  const journaledIds = new Set(
+    (journaled ?? []).map((j) => j.related_task_id as string),
+  );
+
+  return (missedTasks ?? [])
+    .filter((t) => !journaledIds.has(t.id))
+    .map((t) => ({
+      id: t.id,
+      task_name: t.task_name,
+      plan_date: planDateById.get(t.daily_plan_id) ?? "",
+    }))
+    .sort((a, b) => b.plan_date.localeCompare(a.plan_date));
+}
+
+export async function hasAnalysisRunToday(): Promise<boolean> {
+  const { supabase, userId } = await getServerDb();
+  const today = formatDateISO();
+  const { count } = await supabase
+    .from("analysis_runs")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("run_date", today);
+  return (count ?? 0) > 0;
+}
+
+export async function fetchTomorrowTaskCount(): Promise<number> {
+  const { supabase, userId } = await getServerDb();
+  const tomorrowISO = tomorrowDateISO();
+
+  const { data: plan } = await supabase
+    .from("daily_plans")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("plan_date", tomorrowISO)
+    .maybeSingle();
+  if (!plan) return 0;
+
+  const { count } = await supabase
+    .from("tasks")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("daily_plan_id", plan.id);
+  return count ?? 0;
 }
 
 export async function fetchDeadlineGoals(
