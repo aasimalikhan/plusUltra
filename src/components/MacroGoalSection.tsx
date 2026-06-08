@@ -3,7 +3,13 @@ import { macroGoalPillClass } from "@/lib/macro-goal-ui";
 import { TaskRow } from "./TaskRow";
 import { AddTaskInline } from "./AddTaskInline";
 
-export function MacroGoalSection({ goal, tasks }: { goal: MacroGoal; tasks: Task[] }) {
+export function MacroGoalSection({
+  goal,
+  tasks,
+}: {
+  goal: MacroGoal;
+  tasks: Task[];
+}) {
   const done = tasks.filter((t) => t.status === "done").length;
   return (
     <section className="card">

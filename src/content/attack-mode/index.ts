@@ -13,10 +13,7 @@ export const ATTACK_MODE_CHUNKS: AttackModeChunk[] = [
   ...SECTION_5_CHUNKS,
 ];
 
-export const ATTACK_MODE_SECTIONS = [
-  { id: "section-1", label: "Section 1", modules: ["Module 1", "Module 2", "Module 5"] },
-  { id: "section-5", label: "Section 5", modules: ["System"] },
-] as const;
+export { ATTACK_MODE_SECTIONS, chunkModuleLabel } from "./sections";
 
 export function getChunksBySection(section: string): AttackModeChunk[] {
   return ATTACK_MODE_CHUNKS.filter((c) => c.section === section);

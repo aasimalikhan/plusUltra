@@ -11,6 +11,7 @@ import type {
   DeadlineGoal,
   DeadlineMilestone,
   DeadlineGoalWithMilestones,
+  TaskTemplate,
 } from "@/lib/db-types";
 
 export async function fetchActiveRules(): Promise<Rule[]> {
@@ -90,22 +91,28 @@ export async function fetchUnresolvedJournalToday(
 
 export async function fetchSuccessRate(
   days = 14,
+  category?: "personal" | "work",
 ): Promise<{ rate: number; done: number; missed: number; pending: number }> {
   const { supabase, userId } = await getServerDb();
   const since = new Date();
   since.setDate(since.getDate() - days);
   const sinceISO = since.toISOString();
 
-  const { data } = await supabase
+  let q = supabase
     .from("tasks")
-    .select("status, created_at")
+    .select("status, created_at, category")
     .eq("user_id", userId)
     .gte("created_at", sinceISO);
+
+  const { data } = await q;
 
   let done = 0;
   let missed = 0;
   let pending = 0;
   for (const row of data ?? []) {
+    const cat = (row.category as string | null) ?? "personal";
+    if (category === "personal" && cat === "work") continue;
+    if (category === "work" && cat !== "work") continue;
     if (row.status === "done") done++;
     else if (row.status === "missed") missed++;
     else if (row.status === "pending") pending++;
@@ -120,11 +127,14 @@ export interface TodayExecution {
   missed: number;
 }
 
-export async function fetchTodayExecution(planId: string): Promise<TodayExecution> {
+export async function fetchTodayExecution(
+  planId: string,
+  category?: "personal" | "work",
+): Promise<TodayExecution> {
   const { supabase, userId } = await getServerDb();
   const { data } = await supabase
     .from("tasks")
-    .select("status")
+    .select("status, category")
     .eq("user_id", userId)
     .eq("daily_plan_id", planId);
 
@@ -132,6 +142,9 @@ export async function fetchTodayExecution(planId: string): Promise<TodayExecutio
   let pending = 0;
   let missed = 0;
   for (const row of data ?? []) {
+    const cat = (row.category as string | null) ?? "personal";
+    if (category === "personal" && cat === "work") continue;
+    if (category === "work" && cat !== "work") continue;
     if (row.status === "done") done++;
     else if (row.status === "missed") missed++;
     else pending++;
@@ -168,7 +181,7 @@ export async function fetchMissedTasksNeedingJournal(
   const [{ data: missedTasks }, { data: journaled }] = await Promise.all([
     supabase
       .from("tasks")
-      .select("id, task_name, daily_plan_id")
+      .select("id, task_name, daily_plan_id, category")
       .eq("user_id", userId)
       .in("daily_plan_id", planIds)
       .eq("status", "missed"),
@@ -184,6 +197,7 @@ export async function fetchMissedTasksNeedingJournal(
   );
 
   return (missedTasks ?? [])
+    .filter((t) => ((t.category as string | null) ?? "personal") !== "work")
     .filter((t) => !journaledIds.has(t.id))
     .map((t) => ({
       id: t.id,
@@ -263,13 +277,34 @@ export async function fetchDeadlineGoals(
     .sort((a, b) => urgencyScore(b) - urgencyScore(a));
 }
 
+export async function fetchTaskTemplates(): Promise<TaskTemplate[]> {
+  const { supabase, userId } = await getServerDb();
+  const { data } = await supabase
+    .from("task_templates")
+    .select("*")
+    .eq("user_id", userId)
+    .order("sort_order");
+  return (data ?? []) as TaskTemplate[];
+}
+
+export async function fetchWorkContext(): Promise<string | null> {
+  const { supabase, userId } = await getServerDb();
+  const { data } = await supabase
+    .from("profiles")
+    .select("work_context")
+    .eq("id", userId)
+    .maybeSingle();
+  return (data?.work_context as string | null) ?? null;
+}
+
 export async function fetchRecentContext(days = 7) {
   const { supabase, userId } = await getServerDb();
   const since = new Date();
   since.setDate(since.getDate() - days);
   const sinceDate = since.toISOString().slice(0, 10);
 
-  const [plans, tasks, journal, rules, goals, runs, deadlines] = await Promise.all([
+  const [plans, tasks, journal, rules, goals, runs, deadlines, workContext, templates] =
+    await Promise.all([
     supabase
       .from("daily_plans")
       .select("*")
@@ -306,6 +341,8 @@ export async function fetchRecentContext(days = 7) {
       .gte("run_date", sinceDate)
       .order("run_date", { ascending: true }),
     fetchDeadlineGoals("active"),
+    fetchWorkContext(),
+    fetchTaskTemplates(),
   ]);
 
   return {
@@ -316,6 +353,8 @@ export async function fetchRecentContext(days = 7) {
     goals: (goals.data ?? []) as MacroGoal[],
     runs: (runs.data ?? []) as AnalysisRun[],
     deadlines,
+    workContext,
+    templates,
   };
 }
 

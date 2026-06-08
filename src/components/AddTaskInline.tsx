@@ -2,8 +2,17 @@
 
 import { useRef, useState, useTransition } from "react";
 import { addTaskToToday } from "@/app/actions/tasks";
+import type { TaskCategory } from "@/lib/db-types";
 
-export function AddTaskInline({ macroGoalId }: { macroGoalId: string }) {
+export function AddTaskInline({
+  macroGoalId,
+  defaultCategory = "personal",
+  placeholder = "Add a task to this pillar…",
+}: {
+  macroGoalId: string;
+  defaultCategory?: TaskCategory;
+  placeholder?: string;
+}) {
   const formRef = useRef<HTMLFormElement>(null);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -13,6 +22,7 @@ export function AddTaskInline({ macroGoalId }: { macroGoalId: string }) {
     setError(null);
     const fd = new FormData(e.currentTarget);
     fd.set("macro_goal_id", macroGoalId);
+    fd.set("category", defaultCategory);
     startTransition(async () => {
       try {
         await addTaskToToday(fd);
@@ -25,9 +35,10 @@ export function AddTaskInline({ macroGoalId }: { macroGoalId: string }) {
 
   return (
     <form ref={formRef} onSubmit={onSubmit} className="flex gap-2">
+      <input type="hidden" name="category" value={defaultCategory} />
       <input
         name="task_name"
-        placeholder="Add a task to this pillar…"
+        placeholder={placeholder}
         className="input flex-1 text-sm"
         required
         disabled={pending}

@@ -23,6 +23,7 @@ export async function addTaskToToday(formData: FormData) {
 
   const task_name = String(formData.get("task_name") ?? "").trim();
   const macro_goal_id = String(formData.get("macro_goal_id") ?? "") || null;
+  const categoryRaw = String(formData.get("category") ?? "personal");
   if (!task_name) return;
 
   const planDate = formatDateISO();
@@ -36,13 +37,27 @@ export async function addTaskToToday(formData: FormData) {
     .single();
   if (planErr || !plan) throw new Error(planErr?.message ?? "no plan");
 
-  const { error } = await supabase.from("tasks").insert({
+  const taskCategory = categoryRaw === "work" ? "work" : "personal";
+  const baseRow = {
     user_id: userId,
     daily_plan_id: plan.id,
     macro_goal_id,
     task_name,
-    source: "manual",
-  });
+    source: "manual" as const,
+  };
+
+  let { error } = await supabase
+    .from("tasks")
+    .insert({ ...baseRow, category: taskCategory });
+
+  // Migration 0007 adds category column — fallback if not applied yet
+  if (
+    error &&
+    /category|schema cache/i.test(error.message)
+  ) {
+    ({ error } = await supabase.from("tasks").insert(baseRow));
+  }
+
   if (error) throw new Error(error.message);
 
   revalidatePath("/today");
@@ -53,6 +68,31 @@ export async function deleteTask(taskId: string) {
   const { error } = await supabase
     .from("tasks")
     .delete()
+    .eq("id", taskId)
+    .eq("user_id", userId);
+  if (error) throw new Error(error.message);
+  revalidatePath("/today");
+}
+
+export async function renameTask(taskId: string, task_name: string) {
+  const name = task_name.trim();
+  if (!name) return;
+  const { supabase, userId } = await getServerDb();
+  const { error } = await supabase
+    .from("tasks")
+    .update({ task_name: name })
+    .eq("id", taskId)
+    .eq("user_id", userId);
+  if (error) throw new Error(error.message);
+  revalidatePath("/today");
+  revalidatePath("/history");
+}
+
+export async function setTaskCategory(taskId: string, category: "personal" | "work") {
+  const { supabase, userId } = await getServerDb();
+  const { error } = await supabase
+    .from("tasks")
+    .update({ category })
     .eq("id", taskId)
     .eq("user_id", userId);
   if (error) throw new Error(error.message);

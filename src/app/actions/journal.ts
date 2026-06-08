@@ -12,6 +12,8 @@ export interface JournalInput {
   system_repair: string;
   long_term_damage?: string;
   related_task_id?: string | null;
+  /** Default true for missed-task debrief; false for ad-hoc triggers. */
+  queue_repair_task?: boolean;
 }
 
 export async function logPointedJournal(input: JournalInput) {
@@ -57,13 +59,16 @@ export async function logPointedJournal(input: JournalInput) {
     macroGoalId = (fallback?.id as string | null) ?? null;
   }
 
-  await ensureTomorrowRepairTask(supabase, userId, {
-    task_name: input.system_repair,
-    macro_goal_id: macroGoalId,
-  });
+  if (input.queue_repair_task !== false) {
+    await ensureTomorrowRepairTask(supabase, userId, {
+      task_name: input.system_repair,
+      macro_goal_id: macroGoalId,
+    });
+  }
 
   revalidatePath("/today");
   revalidatePath("/history");
+  revalidatePath("/journal");
 }
 
 export async function resolveJournalEntry(id: string, resolved: boolean) {

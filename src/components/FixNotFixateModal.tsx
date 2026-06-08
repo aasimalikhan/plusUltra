@@ -3,6 +3,11 @@
 import { useEffect, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { logPointedJournal } from "@/app/actions/journal";
+import {
+  EMOTIONAL_IMPACT_GUIDE,
+  emotionalImpactBand,
+  repairQualityHint,
+} from "@/lib/journal-validation";
 
 export interface MissedTaskLite {
   id: string;
@@ -13,14 +18,22 @@ export interface MissedTaskLite {
 export function FixNotFixateModal({
   missed,
   onAllResolved,
+  onDismiss,
+  mode = "missed",
 }: {
   missed: MissedTaskLite[];
   onAllResolved?: () => void;
+  /** Close without logging — won't auto-reopen until tomorrow. */
+  onDismiss?: () => void;
+  /** missed = evening debrief for task misses; adhoc = log trigger anytime */
+  mode?: "missed" | "adhoc";
 }) {
   const [idx, setIdx] = useState(0);
   const [pending, startTransition] = useTransition();
   const [skipped, setSkipped] = useState<string[]>([]);
   const [mounted, setMounted] = useState(false);
+  const [repairHint, setRepairHint] = useState<string | null>(null);
+  const [impactValue, setImpactValue] = useState(30);
 
   useEffect(() => setMounted(true), []);
 
@@ -40,8 +53,11 @@ export function FixNotFixateModal({
   }
 
   const current = missed[idx];
+  const isAdhoc = mode === "adhoc";
 
   function next() {
+    setRepairHint(null);
+    setImpactValue(30);
     setIdx((i) => i + 1);
   }
 
@@ -67,6 +83,7 @@ export function FixNotFixateModal({
         emotional_impact,
         system_repair,
         long_term_damage,
+        queue_repair_task: isAdhoc ? false : true,
       });
       next();
     });
@@ -93,16 +110,17 @@ export function FixNotFixateModal({
             id="fix-not-fixate-title"
             className="mt-1 text-base font-medium text-fg"
           >
-            {current.task_name}
+            {isAdhoc ? "Log a trigger" : current.task_name}
           </h3>
-          {"plan_date" in current && current.plan_date ? (
+          {!isAdhoc && current.plan_date ? (
             <p className="mt-0.5 font-mono text-[10px] text-fg-subtle">
               from {current.plan_date}
             </p>
           ) : null}
           <p className="mt-1 text-xs text-fg-muted">
-            It is okay. We do not blame. Acknowledge the damage, write the linear
-            repair, move on.
+            {isAdhoc
+              ? "Capture a pattern in the moment — no tomorrow task queued unless you want one later via analysis."
+              : "Acknowledge damage → write one linear repair → it becomes tomorrow's task. No blame."}
           </p>
         </div>
 
@@ -117,7 +135,11 @@ export function FixNotFixateModal({
                 name="trigger_event"
                 required
                 className="input mt-1"
-                placeholder="e.g. opened phone first thing in the morning"
+                placeholder={
+                  isAdhoc
+                    ? "e.g. scrolled Instagram for 45 min after lunch"
+                    : "e.g. opened phone first thing in the morning"
+                }
               />
             </div>
 
@@ -128,18 +150,31 @@ export function FixNotFixateModal({
                 className="input mt-1"
                 placeholder="e.g. 'I'll do it after one more reel'"
               />
+              <p className="mt-1 text-[10px] text-fg-subtle">
+                The knee-jerk story your brain told you — not the logical repair.
+              </p>
             </div>
 
             <div>
-              <label className="label">Emotional impact (0–100)</label>
+              <label className="label">
+                {EMOTIONAL_IMPACT_GUIDE.label} (0–100)
+              </label>
               <input
                 name="emotional_impact"
-                type="number"
+                type="range"
                 min={0}
                 max={100}
-                defaultValue={30}
-                className="input mt-1"
+                step={5}
+                value={impactValue}
+                onChange={(e) => setImpactValue(Number(e.target.value))}
+                className="mt-2 w-full"
               />
+              <p className="mt-1 text-xs text-fg-muted">
+                {impactValue}% — {emotionalImpactBand(impactValue)}
+              </p>
+              <p className="mt-0.5 text-[10px] text-fg-subtle">
+                {EMOTIONAL_IMPACT_GUIDE.hint}
+              </p>
             </div>
 
             <div>
@@ -148,8 +183,18 @@ export function FixNotFixateModal({
                 name="system_repair"
                 required
                 className="input mt-1"
-                placeholder="e.g. phone outside the room overnight"
+                placeholder="e.g. Phone on charger outside bedroom; stand up within 2 min of waking"
+                onChange={(e) => setRepairHint(repairQualityHint(e.target.value))}
               />
+              {repairHint && (
+                <p className="mt-1 text-[10px] text-amber-300">{repairHint}</p>
+              )}
+              {!isAdhoc && (
+                <p className="mt-1 text-[10px] text-fg-subtle">
+                  This exact text becomes a task on tomorrow&apos;s /today under the
+                  same pillar. Make it specific and schedulable.
+                </p>
+              )}
             </div>
 
             <div>
@@ -159,8 +204,12 @@ export function FixNotFixateModal({
               <input
                 name="long_term_damage"
                 className="input mt-1"
-                placeholder="e.g. compounds into another lost week"
+                placeholder="e.g. compounds into another lost week, job stagnation"
               />
+              <p className="mt-1 text-[10px] text-fg-subtle">
+                What breaks if this pattern repeats — not self-attack, just honest
+                consequence mapping.
+              </p>
             </div>
           </div>
 
@@ -173,14 +222,30 @@ export function FixNotFixateModal({
               >
                 {pending ? "Saving…" : "Log & next"}
               </button>
-              <button type="button" onClick={skip} className="btn">
-                Skip
-              </button>
+              {!isAdhoc && (
+                <button type="button" onClick={skip} className="btn">
+                  Skip
+                </button>
+              )}
+              {isAdhoc && (
+                <button type="button" onClick={() => onAllResolved?.()} className="btn">
+                  Close
+                </button>
+              )}
             </div>
             {skipped.length > 0 && (
               <p className="mt-2 text-[10px] text-fg-subtle">
-                {skipped.length} skipped (logged as missed only)
+                {skipped.length} skipped — still counted as misses without repair log
               </p>
+            )}
+            {!isAdhoc && onDismiss && (
+              <button
+                type="button"
+                onClick={onDismiss}
+                className="mt-3 w-full text-center text-xs text-fg-subtle underline-offset-2 hover:text-fg hover:underline"
+              >
+                Later tonight — don&apos;t show again until tomorrow
+              </button>
             )}
           </div>
         </form>

@@ -1,40 +1,53 @@
-import { fetchRecentContext } from "@/lib/queries";
+import { fetchRecentContext, hasAnalysisRunToday } from "@/lib/queries";
 import {
   buildCursorContextMarkdown,
   buildCursorFullPayload,
-  CURSOR_ANALYST_PROMPT,
 } from "@/lib/context-formatter";
-import { PLUSULTRA_APP_BRIEFING } from "@/lib/app-briefing";
+import {
+  ANALYSIS_PROVIDERS,
+  type AnalysisProvider,
+} from "@/lib/analysis-providers";
 import { CursorBridge } from "./CursorBridge";
 
 export const dynamic = "force-dynamic";
 
 export default async function CursorPage() {
-  const bundle = await fetchRecentContext(7);
+  const [bundle, runAlreadyToday] = await Promise.all([
+    fetchRecentContext(7),
+    hasAnalysisRunToday(),
+  ]);
   const markdown = buildCursorContextMarkdown(bundle);
-  const fullPayload = buildCursorFullPayload(bundle);
+
+  const payloadsByProvider = Object.fromEntries(
+    ANALYSIS_PROVIDERS.map((p) => [
+      p.id,
+      buildCursorFullPayload(bundle, p.providerNote || undefined),
+    ]),
+  ) as Record<AnalysisProvider, string>;
 
   return (
     <div className="space-y-5">
       <div>
         <p className="section-label">Bridge</p>
-        <h1 className="h1 mt-1">Cursor analyst</h1>
+        <h1 className="h1 mt-1">Nightly analysis</h1>
         <p className="mt-2 text-sm text-fg-muted">
-          Copy the <strong className="font-normal text-fg">full payload</strong> into a
-          brand-new Cursor chat — it includes what plusUltra is, your philosophy, routes,
-          and 7 days of live data so the model is not flying blind.
+          Copy the full payload into Cursor, Gemini, or ChatGPT — includes deadlines,
+          work context, standard tasks, and 7 days of live data. Paste JSON back to
+          mutate tomorrow&apos;s plan + rules.
         </p>
         <p className="mt-1 text-xs text-fg-subtle">
-          Journal archive: /journal · Past runs: /insights · Deadlines: /deadlines · Day detail: /history/[date]
+          Journal: /journal · Past runs: /insights · Deadlines: /deadlines · Config: /manage
         </p>
+        {runAlreadyToday && (
+          <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+            You already applied an analysis run today. Applying again is allowed (each run is
+            stored on /insights), but tomorrow&apos;s tasks and rule changes will stack — edit
+            duplicates on /today if needed.
+          </p>
+        )}
       </div>
 
-      <CursorBridge
-        fullPayload={fullPayload}
-        markdown={markdown}
-        prompt={CURSOR_ANALYST_PROMPT}
-        briefing={PLUSULTRA_APP_BRIEFING}
-      />
+      <CursorBridge payloadsByProvider={payloadsByProvider} markdown={markdown} />
     </div>
   );
 }

@@ -2,10 +2,25 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import { cn } from "@/lib/utils";
+import { useState } from "react";
+import { cn, formatDateISO } from "@/lib/utils";
 import { FixNotFixateModal, type MissedTaskLite } from "./FixNotFixateModal";
 import type { TodayExecution } from "@/lib/queries";
+
+const REPAIR_DISMISS_KEY = "plusUltra-repair-dismissed";
+
+function repairDismissStorageKey() {
+  return `${REPAIR_DISMISS_KEY}-${formatDateISO()}`;
+}
+
+function isRepairModalDismissedToday(): boolean {
+  if (typeof window === "undefined") return false;
+  return sessionStorage.getItem(repairDismissStorageKey()) === "1";
+}
+
+function dismissRepairModalForToday() {
+  sessionStorage.setItem(repairDismissStorageKey(), "1");
+}
 
 interface MissedWithDate extends MissedTaskLite {
   plan_date?: string;
@@ -14,7 +29,6 @@ interface MissedWithDate extends MissedTaskLite {
 export function EveningDebrief({
   visible,
   planLocked,
-  isEvening,
   today,
   missedNeedingJournal,
   hasAnalysisRun,
@@ -22,7 +36,6 @@ export function EveningDebrief({
 }: {
   visible: boolean;
   planLocked: boolean;
-  isEvening: boolean;
   today: TodayExecution;
   missedNeedingJournal: MissedWithDate[];
   hasAnalysisRun: boolean;
@@ -36,12 +49,6 @@ export function EveningDebrief({
   const cursorDone = hasAnalysisRun;
   const debriefComplete = dayClosed && journalDone && cursorDone;
 
-  useEffect(() => {
-    if (visible && isEvening && missedNeedingJournal.length > 0) {
-      setModalOpen(true);
-    }
-  }, [visible, isEvening, missedNeedingJournal.length]);
-
   if (!visible) return null;
 
   const steps = [
@@ -52,7 +59,7 @@ export function EveningDebrief({
       detail: dayClosed
         ? "Pending tasks marked missed · day locked"
         : today.pending > 0
-          ? `${today.pending} still open — auto-miss at 11pm when you visit /today`
+          ? `${today.pending} still open — at 11pm, next /today visit auto-misses pending (no cron)`
           : "All tasks resolved before lock",
     },
     {
@@ -74,8 +81,14 @@ export function EveningDebrief({
   ] as const;
 
   function handleModalDone() {
+    dismissRepairModalForToday();
     setModalOpen(false);
     router.refresh();
+  }
+
+  function handleDismissForTonight() {
+    dismissRepairModalForToday();
+    setModalOpen(false);
   }
 
   return (
@@ -133,14 +146,21 @@ export function EveningDebrief({
 
         <div className="mt-4 flex flex-wrap gap-2">
           {!journalDone && (
-            <button
-              type="button"
-              onClick={() => setModalOpen(true)}
-              className="btn btn-primary"
-            >
-              Log {missedNeedingJournal.length} repair
-              {missedNeedingJournal.length === 1 ? "" : "s"}
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => setModalOpen(true)}
+                className="btn btn-primary"
+              >
+                Log {missedNeedingJournal.length} repair
+                {missedNeedingJournal.length === 1 ? "" : "s"}
+              </button>
+              {isRepairModalDismissedToday() && (
+                <span className="self-center text-xs text-fg-subtle">
+                  Deferred for tonight — button above when ready
+                </span>
+              )}
+            </>
           )}
           {!cursorDone && (
             <Link href="/cursor" className="btn btn-primary">
@@ -166,6 +186,7 @@ export function EveningDebrief({
         <FixNotFixateModal
           missed={missedNeedingJournal}
           onAllResolved={handleModalDone}
+          onDismiss={handleDismissForTonight}
         />
       )}
     </>

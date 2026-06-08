@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { getServerDb } from "@/lib/db";
+import { computeExecutionRate, formatExecutionRatePercent } from "@/lib/execution-rate";
+import { formatDateISO } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -9,6 +11,8 @@ interface DayCell {
   total: number;
   done: number;
   missed: number;
+  pending: number;
+  isLocked: boolean;
 }
 
 export default async function HistoryPage() {
@@ -16,10 +20,11 @@ export default async function HistoryPage() {
   const since = new Date();
   since.setDate(since.getDate() - 60);
   const sinceISO = since.toISOString();
+  const today = formatDateISO();
 
   const { data: plans } = await supabase
     .from("daily_plans")
-    .select("plan_date, id, tasks(status)")
+    .select("plan_date, id, is_locked, tasks(status)")
     .eq("user_id", userId)
     .gte("plan_date", since.toISOString().slice(0, 10))
     .order("plan_date", { ascending: false });
@@ -43,6 +48,8 @@ export default async function HistoryPage() {
       total: tasks.length,
       done: tasks.filter((t) => t.status === "done").length,
       missed: tasks.filter((t) => t.status === "missed").length,
+      pending: tasks.filter((t) => t.status === "pending").length,
+      isLocked: p.is_locked as boolean,
     };
   });
 
@@ -62,6 +69,9 @@ export default async function HistoryPage() {
           </Link>
           .
         </p>
+        <p className="mt-1 text-xs text-fg-subtle">
+          Locked days: done ÷ (done + missed). Open days show in-progress rate including pending.
+        </p>
       </div>
 
       <section className="card">
@@ -70,12 +80,11 @@ export default async function HistoryPage() {
         ) : (
           <ul className="divide-y divide-bg-border">
             {cells.map((c) => {
-              const rate =
-                c.total > 0
-                  ? Math.round(
-                      (c.done / Math.max(c.done + c.missed, 1)) * 100,
-                    )
-                  : null;
+              const { rate, isOpen } = computeExecutionRate(
+                { done: c.done, missed: c.missed, pending: c.pending },
+                c.isLocked || c.date !== today,
+              );
+              const rateLabel = formatExecutionRatePercent(rate);
               const runCount = runsByDate.get(c.date) ?? 0;
               return (
                 <li key={c.date}>
@@ -95,26 +104,33 @@ export default async function HistoryPage() {
                     <div className="flex items-center gap-3 text-xs">
                       <span className="font-mono text-fg-muted">
                         {c.done}/{c.total}
+                        {c.pending > 0 && (
+                          <span className="text-amber-300/90"> · {c.pending} open</span>
+                        )}
                       </span>
                       {c.missed > 0 && (
                         <span className="font-mono text-red-400">
                           −{c.missed}
                         </span>
                       )}
-                      {rate !== null && (
+                      {rateLabel && (
                         <span
                           className={cn(
                             "rounded-md border px-1.5 py-0.5 font-mono text-[10px]",
-                            rate >= 70 &&
+                            isOpen && "border-amber-500/30 bg-amber-500/[0.06] text-amber-300",
+                            !isOpen &&
+                              Math.round((rate ?? 0) * 100) >= 70 &&
                               "border-emerald-500/30 bg-emerald-500/[0.06] text-emerald-300",
-                            rate >= 40 &&
-                              rate < 70 &&
+                            !isOpen &&
+                              Math.round((rate ?? 0) * 100) >= 40 &&
+                              Math.round((rate ?? 0) * 100) < 70 &&
                               "border-amber-500/30 bg-amber-500/[0.06] text-amber-300",
-                            rate < 40 &&
+                            !isOpen &&
+                              Math.round((rate ?? 0) * 100) < 40 &&
                               "border-red-500/30 bg-red-500/[0.06] text-red-300",
                           )}
                         >
-                          {rate}%
+                          {isOpen ? `${rateLabel} live` : rateLabel}
                         </span>
                       )}
                       {runCount > 0 && <span className="pill">{runCount} run</span>}

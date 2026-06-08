@@ -1,12 +1,22 @@
 "use client";
 
-import { useTransition } from "react";
-import { setTaskStatus, deleteTask } from "@/app/actions/tasks";
+import { useState, useTransition } from "react";
+import { setTaskStatus, deleteTask, renameTask, setTaskCategory } from "@/app/actions/tasks";
 import type { Task, TaskStatus } from "@/lib/db-types";
 import { cn } from "@/lib/utils";
 
-export function TaskRow({ task }: { task: Task }) {
+export function TaskRow({
+  task,
+  showWorkPromote = false,
+}: {
+  task: Task;
+  /** Compact row with prominent → work button */
+  showWorkPromote?: boolean;
+}) {
   const [pending, startTransition] = useTransition();
+  const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState(task.task_name);
+  const category = task.category ?? "personal";
 
   function toggle() {
     const next: TaskStatus =
@@ -23,6 +33,25 @@ export function TaskRow({ task }: { task: Task }) {
     });
   }
 
+  function saveEdit() {
+    const name = editName.trim();
+    if (!name || name === task.task_name) {
+      setEditing(false);
+      return;
+    }
+    startTransition(async () => {
+      await renameTask(task.id, name);
+      setEditing(false);
+    });
+  }
+
+  function toggleCategory() {
+    const next = category === "work" ? "personal" : "work";
+    startTransition(async () => {
+      await setTaskCategory(task.id, next);
+    });
+  }
+
   const done = task.status === "done";
   const missed = task.status === "missed";
 
@@ -31,6 +60,7 @@ export function TaskRow({ task }: { task: Task }) {
       className={cn(
         "group flex items-center gap-3 rounded-lg border border-bg-border bg-bg-subtle px-3 py-2.5 transition",
         pending && "opacity-50",
+        category === "work" && "border-blue-500/20",
       )}
     >
       <button
@@ -64,19 +94,65 @@ export function TaskRow({ task }: { task: Task }) {
         )}
       </button>
 
-      <span
-        className={cn(
-          "flex-1 text-sm",
-          done && "text-fg-subtle line-through",
-          missed && "text-red-300",
-          !done && !missed && "text-fg",
-        )}
-      >
-        {task.task_name}
-      </span>
+      {editing ? (
+        <input
+          value={editName}
+          onChange={(e) => setEditName(e.target.value)}
+          onBlur={saveEdit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") saveEdit();
+            if (e.key === "Escape") {
+              setEditName(task.task_name);
+              setEditing(false);
+            }
+          }}
+          autoFocus
+          className="input flex-1 py-1 text-sm"
+        />
+      ) : (
+        <span
+          onDoubleClick={() => setEditing(true)}
+          title="Double-click to edit"
+          className={cn(
+            "flex-1 cursor-text text-sm",
+            done && "text-fg-subtle line-through",
+            missed && "text-red-300",
+            !done && !missed && "text-fg",
+          )}
+        >
+          {task.task_name}
+        </span>
+      )}
+
+      {category === "work" && (
+        <button
+          type="button"
+          onClick={toggleCategory}
+          className="pill border-blue-500/30 text-blue-300"
+          title="Click to mark personal"
+        >
+          work
+        </button>
+      )}
+      {category === "personal" && (showWorkPromote || task.source !== "standard") && (
+        <button
+          type="button"
+          onClick={toggleCategory}
+          className={cn(
+            "pill border-blue-500/30 text-blue-300",
+            !showWorkPromote && "opacity-0 transition-opacity group-hover:opacity-100",
+          )}
+          title="Move to Verizon work section"
+        >
+          {showWorkPromote ? "→ work" : "+ work"}
+        </button>
+      )}
 
       {task.source === "cursor" && (
         <span className="pill">cursor</span>
+      )}
+      {task.source === "standard" && (
+        <span className="pill">standard</span>
       )}
 
       <button

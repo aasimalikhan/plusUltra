@@ -3,9 +3,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ATTACK_MODE_CHUNKS,
-  ATTACK_MODE_SECTIONS,
   type AttackModeChunk,
 } from "@/content/attack-mode";
+import {
+  ATTACK_MODE_SECTIONS,
+  chunkModuleLabel,
+  DISPLAY_TO_CHUNK_MODULE,
+} from "@/content/attack-mode/sections";
 import type { AttackModeSearchResult } from "@/content/attack-mode";
 import { highlightQueryInSnippet, searchAttackMode } from "@/lib/attack-mode-search";
 import { cn } from "@/lib/utils";
@@ -79,7 +83,7 @@ function ChunkCard({
     >
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <span className="pill">{chunk.section}</span>
-        <span className="pill">{chunk.module}</span>
+        <span className="pill">{chunkModuleLabel(chunk.module)}</span>
       </div>
       <h2 className="font-display text-lg font-semibold tracking-tight text-fg">
         {chunk.title}
@@ -119,7 +123,7 @@ function SearchResultRow({
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium text-sm text-fg">{result.chunk.title}</span>
         <span className="text-[10px] uppercase tracking-wide text-fg-subtle">
-          {result.chunk.module}
+          {chunkModuleLabel(result.chunk.module)}
         </span>
       </div>
       <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-fg-muted">
@@ -163,12 +167,11 @@ export function AttackModeReader() {
 
   const visibleChunks = useMemo(() => {
     return ATTACK_MODE_CHUNKS.filter((chunk) => {
-      if (activeSection !== "all") {
-        const sectionLabel =
-          ATTACK_MODE_SECTIONS.find((s) => s.id === activeSection)?.label ?? "";
-        if (chunk.section !== sectionLabel) return false;
+      if (activeSection !== "all" && chunk.section !== activeSection) return false;
+      if (activeModule !== "all") {
+        const chunkModule = DISPLAY_TO_CHUNK_MODULE[activeModule] ?? activeModule;
+        if (chunk.module !== chunkModule) return false;
       }
-      if (activeModule !== "all" && chunk.module !== activeModule) return false;
       return true;
     });
   }, [activeSection, activeModule]);
@@ -313,7 +316,7 @@ export function AttackModeReader() {
                 onClick={() => jumpToChunk(chunk.id)}
                 className="w-full rounded-md px-2 py-1.5 text-left text-sm text-fg-muted transition-colors hover:bg-bg-subtle hover:text-fg"
               >
-                <span className="text-fg-subtle">{chunk.module} · </span>
+                <span className="text-fg-subtle">{chunkModuleLabel(chunk.module)} · </span>
                 {chunk.title}
               </button>
             </li>

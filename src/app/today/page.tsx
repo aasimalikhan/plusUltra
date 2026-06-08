@@ -11,10 +11,14 @@ import {
   fetchTodayExecution,
   fetchTomorrowTaskCount,
   fetchUnresolvedJournalToday,
+  fetchWorkContext,
   hasAnalysisRunToday,
 } from "@/lib/queries";
 import { autoMarkOverdueAsMissed } from "@/app/actions/tasks";
 import { isDebriefTime, isEvening } from "@/lib/utils";
+import { getServerDb } from "@/lib/db";
+import { ensureTodayStandardTasks } from "@/lib/standard-tasks";
+import { isPersonalTask, isWorkCandidate, isWorkTask } from "@/lib/task-utils";
 
 import { RulesBanner } from "@/components/RulesBanner";
 import { DeadlineStrip } from "@/components/DeadlineStrip";
@@ -22,10 +26,12 @@ import { VisualAnchorWall } from "@/components/VisualAnchorWall";
 import { MacroGoalSection } from "@/components/MacroGoalSection";
 import { SuccessRateBadge } from "@/components/SuccessRateBadge";
 import { TodayExecutionBadge } from "@/components/TodayExecutionBadge";
+import { WorkSection } from "@/components/WorkSection";
 import { EveningDebrief } from "@/components/EveningDebrief";
 import { AdHocJournalButton } from "@/components/AdHocJournalButton";
 import { ResolveJournalRow } from "@/components/ResolveJournalRow";
 import Link from "next/link";
+import type { Task } from "@/lib/db-types";
 
 export const dynamic = "force-dynamic";
 
@@ -35,38 +41,53 @@ export default async function TodayPage() {
   await fetchOrCreateTodayPlan();
   await autoMarkOverdueAsMissed();
 
+  const { supabase, userId } = await getServerDb();
+  await ensureTodayStandardTasks(supabase, userId);
+
   const evening = isEvening();
   const debriefTime = isDebriefTime();
 
-  const [rules, goals, plan, rate, deadlines] = await Promise.all([
-    fetchActiveRules(),
-    fetchMacroGoals(),
-    fetchOrCreateTodayPlan(),
-    fetchSuccessRate(14),
-    fetchDeadlineGoals("active"),
-  ]);
+  const [rules, goals, plan, personalRate, workRate, deadlines, workContext] =
+    await Promise.all([
+      fetchActiveRules(),
+      fetchMacroGoals(),
+      fetchOrCreateTodayPlan(),
+      fetchSuccessRate(14, "personal"),
+      fetchSuccessRate(14, "work"),
+      fetchDeadlineGoals("active"),
+      fetchWorkContext(),
+    ]);
 
   const tasks = plan ? await fetchTasksForPlan(plan.id) : [];
   const journal = plan ? await fetchUnresolvedJournalToday(plan.id) : [];
+  const richGoal = goals.find((g) => g.slug === "RICH");
 
-  const [todayExec, missedNeedingJournal, analysisRunToday, tomorrowCount] =
+  const workTasks = tasks.filter(isWorkTask);
+  const untaggedCandidates = tasks.filter((t) =>
+    isWorkCandidate(t, richGoal?.id),
+  );
+
+  const [personalExec, workExec, missedNeedingJournal, analysisRunToday, tomorrowCount] =
     plan
       ? await Promise.all([
-          fetchTodayExecution(plan.id),
+          fetchTodayExecution(plan.id, "personal"),
+          fetchTodayExecution(plan.id, "work"),
           fetchMissedTasksNeedingJournal(7),
           hasAnalysisRunToday(),
           fetchTomorrowTaskCount(),
         ])
       : [
           { done: 0, pending: 0, missed: 0 },
+          { done: 0, pending: 0, missed: 0 },
           [] as Awaited<ReturnType<typeof fetchMissedTasksNeedingJournal>>,
           false,
           0,
         ];
 
-  const tasksByGoal = new Map<string, typeof tasks>();
+  const tasksByGoal = new Map<string, Task[]>();
   for (const g of goals) tasksByGoal.set(g.id, []);
   for (const t of tasks) {
+    if (!isPersonalTask(t)) continue;
     if (t.macro_goal_id && tasksByGoal.has(t.macro_goal_id)) {
       tasksByGoal.get(t.macro_goal_id)!.push(t);
     }
@@ -75,7 +96,7 @@ export default async function TodayPage() {
   const showDebrief =
     debriefTime ||
     plan?.is_locked === true ||
-    todayExec.pending > 0 ||
+    personalExec.pending > 0 ||
     missedNeedingJournal.length > 0;
 
   return (
@@ -95,32 +116,57 @@ export default async function TodayPage() {
         </div>
       </div>
 
-      <SuccessRateBadge
-        rate={rate.rate}
-        done={rate.done}
-        missed={rate.missed}
-        pending={rate.pending}
-      />
+      <div className="grid gap-3 lg:grid-cols-2">
+        <SuccessRateBadge
+          rate={personalRate.rate}
+          done={personalRate.done}
+          missed={personalRate.missed}
+          pending={personalRate.pending}
+          label="system"
+        />
+        <SuccessRateBadge
+          rate={workRate.rate}
+          done={workRate.done}
+          missed={workRate.missed}
+          pending={workRate.pending}
+          label="work"
+        />
+      </div>
 
       {plan && (
-        <TodayExecutionBadge
-          today={todayExec}
-          planLocked={plan.is_locked}
-          isEvening={evening}
-        />
+        <div className="grid gap-3 lg:grid-cols-2">
+          <TodayExecutionBadge
+            today={personalExec}
+            planLocked={plan.is_locked}
+            isEvening={evening}
+            variant="personal"
+          />
+          <TodayExecutionBadge
+            today={workExec}
+            planLocked={plan.is_locked}
+            isEvening={evening}
+            variant="work"
+          />
+        </div>
       )}
 
       {showDebrief && plan && (
         <EveningDebrief
           visible={showDebrief}
           planLocked={plan.is_locked}
-          isEvening={evening}
-          today={todayExec}
+          today={personalExec}
           missedNeedingJournal={missedNeedingJournal}
           hasAnalysisRun={analysisRunToday}
           tomorrowTaskCount={tomorrowCount}
         />
       )}
+
+      <WorkSection
+        workTasks={workTasks}
+        richGoal={richGoal}
+        untaggedCandidates={untaggedCandidates}
+        workContext={workContext}
+      />
 
       <RulesBanner rules={rules} />
 
@@ -128,10 +174,17 @@ export default async function TodayPage() {
 
       <VisualAnchorWall goals={goals} />
 
-      <div className="space-y-4">
-        {goals.map((g) => (
-          <MacroGoalSection key={g.id} goal={g} tasks={tasksByGoal.get(g.id) ?? []} />
-        ))}
+      <div>
+        <p className="section-label mb-3">Personal system · RICH / MUSCULAR / INTELLIGENT</p>
+        <div className="space-y-4">
+          {goals.map((g) => (
+            <MacroGoalSection
+              key={g.id}
+              goal={g}
+              tasks={tasksByGoal.get(g.id) ?? []}
+            />
+          ))}
+        </div>
       </div>
 
       {evening && journal.length > 0 && (
@@ -148,6 +201,9 @@ export default async function TodayPage() {
       <AdHocJournalButton />
 
       <div className="flex flex-wrap gap-2 text-xs">
+        <Link href="/manage" className="pill transition-colors hover:bg-bg-subtle">
+          Manage →
+        </Link>
         <Link href="/deadlines" className="pill transition-colors hover:bg-bg-subtle">
           Deadlines →
         </Link>

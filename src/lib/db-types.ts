@@ -1,5 +1,7 @@
 export type TaskStatus = "pending" | "done" | "missed";
-export type TaskSource = "manual" | "cursor";
+export type TaskSource = "manual" | "cursor" | "standard";
+export type TaskCategory = "personal" | "work";
+export type AnalysisProvider = "cursor" | "gemini" | "chatgpt";
 /** Uppercase slug stored on macro_goals (built-in or custom). */
 export type MacroGoalSlug = string;
 
@@ -31,6 +33,25 @@ export interface Task {
   status: TaskStatus;
   completed_at: string | null;
   source: TaskSource;
+  category?: TaskCategory;
+  created_at: string;
+}
+
+export interface TaskTemplate {
+  id: string;
+  user_id: string;
+  macro_goal_id: string | null;
+  task_name: string;
+  category: TaskCategory;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+}
+
+export interface UserProfile {
+  id: string;
+  display_name: string | null;
+  work_context: string | null;
   created_at: string;
 }
 
@@ -68,6 +89,7 @@ export interface AnalysisRun {
   cursor_raw_input: unknown;
   cursor_raw_output: unknown;
   summary: string | null;
+  provider: AnalysisProvider;
   created_at: string;
 }
 
@@ -110,6 +132,7 @@ export interface CursorPlan {
   tomorrow_tasks: Array<{
     macro_goal_slug: MacroGoalSlug;
     task_name: string;
+    category?: TaskCategory;
   }>;
   rule_changes?: {
     add?: Array<{ rule_text: string; priority?: number }>;

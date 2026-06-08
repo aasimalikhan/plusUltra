@@ -23,6 +23,8 @@ export interface ContextBundle {
   goals: MacroGoal[];
   runs: AnalysisRun[];
   deadlines: DeadlineGoalWithMilestones[];
+  workContext?: string | null;
+  templates?: Array<{ task_name: string; category: string; is_active: boolean }>;
 }
 
 export const CURSOR_ANALYST_PROMPT = `You are the nightly **logical-brain analyst** for plusUltra (see SYSTEM briefing above).
@@ -33,7 +35,7 @@ deadline goals (V.IMP — importance, target dates, milestone progress, implemen
 and prior analysis run summaries.
 
 Your job:
-1. Identify failure patterns and recurring triggers across the week. Cite specific journal IDs and task IDs.
+1. Identify failure patterns and recurring triggers across the week. Cite specific journal IDs and task IDs — **full UUIDs exactly as shown in LIVE DATA** (e.g. b022c94e-3aa5-495f-a671-fd20b2794d17), never short prefixes.
 2. Mutate TOMORROW's task list under the user's macro_goal_slug values listed in LIVE DATA. Pivot on evidence — fix not fixate.
 3. Prioritize tomorrow's tasks toward active deadline goals — **deadlines are God**. Overdue or <14d deadlines with low milestone progress need direct daily work, not tangential tasks.
 4. Update NEW ME rules: add for repeated patterns; demote stale (higher priority number); deactivate
@@ -47,7 +49,7 @@ Constraints:
   "summary": string,
   "cited_journal_ids": string[],
   "cited_task_ids": string[],
-  "tomorrow_tasks": [{ "macro_goal_slug": string, "task_name": string }],
+  "tomorrow_tasks": [{ "macro_goal_slug": string, "task_name": string, "category"?: "personal" | "work" }],
   "rule_changes": {
     "add":        [{ "rule_text": string, "priority"?: number }],
     "demote":     [{ "id": string, "priority": number }],
@@ -56,13 +58,31 @@ Constraints:
 }`;
 
 export function buildCursorContextMarkdown(bundle: ContextBundle): string {
-  const { plans, tasks, journal, rules, goals, runs, deadlines } = bundle;
+  const { plans, tasks, journal, rules, goals, runs, deadlines, workContext, templates } =
+    bundle;
 
   const lines: string[] = [];
   lines.push(`# LIVE DATA · generated ${new Date().toISOString()}`);
   lines.push(
     `Plans in window: ${plans.length} · Tasks: ${tasks.length} · Journal entries: ${journal.length} · Prior runs: ${runs.length} · Active deadlines: ${deadlines.length}`,
   );
+  lines.push("");
+
+  if (workContext) {
+    lines.push("## Work context · Verizon (keep work tasks separate from personal standards)");
+    lines.push(workContext);
+    lines.push("");
+  }
+
+  lines.push("## Standard daily tasks (auto-rolled each morning from /manage templates)");
+  const activeTemplates = (templates ?? []).filter((t) => t.is_active);
+  if (activeTemplates.length === 0) {
+    lines.push("- (none configured — user should set on /manage)");
+  } else {
+    for (const t of activeTemplates) {
+      lines.push(`- [${t.category}] ${t.task_name}`);
+    }
+  }
   lines.push("");
 
   lines.push("## Deadline goals · V.IMP (deadlines are God — prioritize tomorrow toward these)");
@@ -126,7 +146,7 @@ export function buildCursorContextMarkdown(bundle: ContextBundle): string {
     lines.push(`### ${d}`);
     for (const t of tasksByPlanDate.get(d)!) {
       const slug = t.macro_goal_id ? (goalById.get(t.macro_goal_id)?.slug ?? "—") : "—";
-      lines.push(`- [${t.status}] (${slug}) (id:${t.id}) ${t.task_name}${t.source === "cursor" ? " · via cursor" : ""}`);
+      lines.push(`- [${t.status}] (${slug})${(t.category ?? "personal") === "work" ? " [WORK]" : ""} (id:${t.id}) ${t.task_name}${t.source === "cursor" ? " · via cursor" : t.source === "standard" ? " · standard" : ""}`);
     }
     lines.push("");
   }
@@ -161,15 +181,21 @@ export function buildCursorContextMarkdown(bundle: ContextBundle): string {
   return lines.join("\n");
 }
 
-/** Full payload for a fresh Cursor chat: product briefing + analyst role + live data. */
-export function buildCursorFullPayload(bundle: ContextBundle): string {
+/** Full payload for a fresh analysis chat: product briefing + analyst role + live data. */
+export function buildCursorFullPayload(
+  bundle: ContextBundle,
+  providerNote?: string,
+): string {
   const live = buildCursorContextMarkdown(bundle);
+  const prompt = providerNote
+    ? `${CURSOR_ANALYST_PROMPT}\n\nProvider note: ${providerNote}`
+    : CURSOR_ANALYST_PROMPT;
   return [
     PLUSULTRA_APP_BRIEFING,
     "",
     "---",
     "",
-    CURSOR_ANALYST_PROMPT,
+    prompt,
     "",
     "---",
     "",

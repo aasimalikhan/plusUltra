@@ -5,10 +5,12 @@ export function TodayExecutionBadge({
   today,
   planLocked,
   isEvening,
+  variant = "personal",
 }: {
   today: TodayExecution;
   planLocked: boolean;
   isEvening: boolean;
+  variant?: "personal" | "work";
 }) {
   const total = today.done + today.pending + today.missed;
   if (total === 0) return null;
@@ -18,10 +20,18 @@ export function TodayExecutionBadge({
       ? Math.round((today.done / (today.done + today.missed)) * 100)
       : null;
 
+  const isWork = variant === "work";
+
   return (
-    <div className="card flex items-center justify-between">
+    <div
+      className={`card flex items-center justify-between ${
+        isWork ? "border-blue-500/20 bg-blue-500/[0.02]" : ""
+      }`}
+    >
       <div>
-        <p className="section-label">Today&apos;s execution</p>
+        <p className={`section-label ${isWork ? "text-blue-300/90" : ""}`}>
+          {isWork ? "Today's work" : "Today's execution"}
+        </p>
         <p className="mt-1 font-mono text-lg text-fg">
           {today.done} done
           {today.pending > 0 && (

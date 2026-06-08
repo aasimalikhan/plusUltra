@@ -4,37 +4,12 @@ import { revalidatePath } from "next/cache";
 import { getServerDb } from "@/lib/db";
 import { formatDateISO } from "@/lib/utils";
 import type { CursorPlan } from "@/lib/db-types";
-
-function validatePlan(
-  input: unknown,
-  allowedSlugs: Set<string>,
-): { ok: true; plan: CursorPlan } | { ok: false; error: string } {
-  if (!input || typeof input !== "object")
-    return { ok: false, error: "not an object" };
-  const p = input as Record<string, unknown>;
-  if (typeof p.summary !== "string")
-    return { ok: false, error: "summary must be a string" };
-  if (!Array.isArray(p.tomorrow_tasks))
-    return { ok: false, error: "tomorrow_tasks must be an array" };
-  for (const t of p.tomorrow_tasks) {
-    if (!t || typeof t !== "object")
-      return { ok: false, error: "tomorrow_tasks item not object" };
-    const tt = t as Record<string, unknown>;
-    const slug = String(tt.macro_goal_slug ?? "").toUpperCase();
-    if (!allowedSlugs.has(slug))
-      return {
-        ok: false,
-        error: `unknown macro_goal_slug "${slug}" — use: ${[...allowedSlugs].join(", ")}`,
-      };
-    if (typeof tt.task_name !== "string" || !tt.task_name.trim())
-      return { ok: false, error: "missing task_name" };
-  }
-  return { ok: true, plan: p as unknown as CursorPlan };
-}
+import { validateCursorPlan } from "@/lib/cursor-plan-validation";
 
 export async function applyCursorPlan(opts: {
   rawInputMarkdown: string;
   rawOutputText: string;
+  provider?: "cursor" | "gemini" | "chatgpt";
 }): Promise<{ ok: boolean; error?: string; runId?: string; tasksCreated?: number }> {
   const { supabase, userId } = await getServerDb();
 
@@ -50,7 +25,7 @@ export async function applyCursorPlan(opts: {
     .eq("user_id", userId);
   const allowedSlugs = new Set((goals ?? []).map((g) => g.slug as string));
 
-  const v = validatePlan(parsed, allowedSlugs);
+  const v = validateCursorPlan(parsed, allowedSlugs);
   if (!v.ok) return { ok: false, error: v.error };
   const plan = v.plan;
 
@@ -81,6 +56,7 @@ export async function applyCursorPlan(opts: {
       macro_goal_id: slugToId.get(String(t.macro_goal_slug).toUpperCase()) ?? null,
       task_name: t.task_name.trim(),
       source: "cursor" as const,
+      category: t.category === "work" ? "work" : "personal",
     }))
     .filter((t) => t.task_name.length > 0);
 
@@ -131,6 +107,7 @@ export async function applyCursorPlan(opts: {
       cursor_raw_input: { markdown: opts.rawInputMarkdown },
       cursor_raw_output: plan,
       summary: plan.summary,
+      provider: opts.provider ?? "cursor",
     })
     .select("id")
     .single();

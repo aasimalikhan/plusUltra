@@ -2,7 +2,12 @@
 
 import { useState, useTransition } from "react";
 import { applyCursorPlan } from "@/app/actions/cursor";
+import { parseCursorPlanJson } from "@/lib/cursor-plan-validation";
 import type { CursorPlan } from "@/lib/db-types";
+import {
+  ANALYSIS_PROVIDERS,
+  type AnalysisProvider,
+} from "@/lib/analysis-providers";
 
 interface Result {
   ok: boolean;
@@ -12,40 +17,33 @@ interface Result {
 }
 
 function tryParse(raw: string): { ok: true; plan: CursorPlan } | { ok: false; error: string } {
-  let text = raw.trim();
-  // Tolerate ```json ... ``` fences
-  if (text.startsWith("```")) {
-    text = text.replace(/^```(?:json)?\s*/i, "").replace(/```$/, "").trim();
-  }
-  try {
-    return { ok: true, plan: JSON.parse(text) };
-  } catch (e) {
-    return { ok: false, error: (e as Error).message };
-  }
+  const r = parseCursorPlanJson(raw);
+  if (!r.ok) return r;
+  return { ok: true, plan: r.parsed as CursorPlan };
 }
 
 export function CursorBridge({
-  fullPayload,
+  payloadsByProvider,
   markdown,
-  prompt,
-  briefing,
 }: {
-  fullPayload: string;
+  payloadsByProvider: Record<AnalysisProvider, string>;
   markdown: string;
-  prompt: string;
-  briefing: string;
 }) {
-  const [copied, setCopied] = useState<"none" | "full" | "ctx" | "prompt" | "brief">("none");
+  const [provider, setProvider] = useState<AnalysisProvider>("cursor");
+  const [copied, setCopied] = useState(false);
   const [raw, setRaw] = useState("");
   const [parsedPreview, setParsedPreview] = useState<CursorPlan | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
   const [pending, startTransition] = useTransition();
 
-  async function copy(text: string, which: "full" | "ctx" | "prompt" | "brief") {
+  const fullPayload = payloadsByProvider[provider];
+  const providerConfig = ANALYSIS_PROVIDERS.find((p) => p.id === provider)!;
+
+  async function copy(text: string) {
     await navigator.clipboard.writeText(text);
-    setCopied(which);
-    setTimeout(() => setCopied("none"), 1500);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
   }
 
   function previewPlan() {
@@ -66,6 +64,7 @@ export function CursorBridge({
       const res = await applyCursorPlan({
         rawInputMarkdown: markdown,
         rawOutputText: JSON.stringify(parsedPreview),
+        provider,
       });
       setResult(res);
       if (res.ok) {
@@ -78,52 +77,47 @@ export function CursorBridge({
   return (
     <div className="space-y-5">
       <section className="card space-y-3">
+        <header>
+          <h2 className="section-label">Provider</h2>
+          <p className="mt-1 text-sm text-fg-muted">
+            Same payload and JSON schema — paste into Cursor, Gemini, or ChatGPT.
+            Missed a night? Any provider works; paste JSON back here.
+          </p>
+        </header>
+        <div className="flex flex-wrap gap-1.5">
+          {ANALYSIS_PROVIDERS.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => setProvider(p.id)}
+              className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
+                provider === p.id
+                  ? "border-fg bg-fg text-bg"
+                  : "border-bg-border text-fg-muted hover:text-fg"
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-fg-subtle">{providerConfig.description}</p>
+      </section>
+
+      <section className="card space-y-3">
         <header className="flex items-center justify-between">
-          <h2 className="section-label">1 · Send to Cursor</h2>
+          <h2 className="section-label">1 · Send to {providerConfig.label}</h2>
         </header>
         <p className="text-sm text-fg-muted">
-          Use <strong className="font-normal text-fg">Copy everything</strong> for a new chat —
-          includes app briefing (what plusUltra is), analyst instructions, and 7 days of data.
+          Copy the full payload into a <strong className="font-normal text-fg">new chat</strong> —
+          briefing, analyst instructions, deadlines, work context, and 7 days of data.
         </p>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <button
-            type="button"
-            onClick={() => copy(fullPayload, "full")}
-            className="btn btn-primary h-auto min-h-10 w-full whitespace-normal px-4 py-2.5 text-center leading-snug sm:col-span-2"
-          >
-            {copied === "full" ? (
-              "Copied"
-            ) : (
-              <>
-                Copy everything
-                <span className="mt-0.5 block text-xs font-normal opacity-80">
-                  recommended · briefing + prompt + 7 days data
-                </span>
-              </>
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={() => copy(briefing, "brief")}
-            className="btn h-auto min-h-10 w-full whitespace-normal px-4 py-2.5 text-center leading-snug"
-          >
-            {copied === "brief" ? "Copied" : "App briefing only"}
-          </button>
-          <button
-            type="button"
-            onClick={() => copy(prompt, "prompt")}
-            className="btn h-auto min-h-10 w-full whitespace-normal px-4 py-2.5 text-center leading-snug"
-          >
-            {copied === "prompt" ? "Copied" : "Analyst prompt only"}
-          </button>
-          <button
-            type="button"
-            onClick={() => copy(markdown, "ctx")}
-            className="btn h-auto min-h-10 w-full whitespace-normal px-4 py-2.5 text-center leading-snug sm:col-span-2"
-          >
-            {copied === "ctx" ? "Copied" : "Live data only"}
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => copy(fullPayload)}
+          className="btn btn-primary h-auto min-h-10 w-full whitespace-normal px-4 py-2.5 text-center leading-snug"
+        >
+          {copied ? "Copied" : `Copy everything (${providerConfig.label})`}
+        </button>
         <details className="rounded-md border border-bg-border bg-bg-subtle">
           <summary className="cursor-pointer px-3 py-2 text-xs text-fg-muted">
             Preview payload ({fullPayload.length.toLocaleString()} chars)
@@ -136,9 +130,9 @@ export function CursorBridge({
 
       <section className="card space-y-3">
         <header>
-          <h2 className="section-label">2 · Paste Cursor&apos;s JSON</h2>
+          <h2 className="section-label">2 · Paste JSON back</h2>
           <p className="mt-1 text-sm text-fg-muted">
-            Paste the JSON Cursor returns. Triple-backtick fences are tolerated.
+            Paste the JSON from {providerConfig.label}. Triple-backtick fences are tolerated.
           </p>
         </header>
         <textarea
@@ -183,8 +177,8 @@ export function CursorBridge({
         >
           {result.ok ? (
             <p className="text-sm text-emerald-300">
-              Plan applied. Created {result.tasksCreated ?? 0} tasks for
-              tomorrow. Analysis run id:{" "}
+              Plan applied via {providerConfig.label}. Created {result.tasksCreated ?? 0}{" "}
+              tasks for tomorrow. Run id:{" "}
               <span className="font-mono text-xs">{result.runId}</span>
             </p>
           ) : (
@@ -208,7 +202,10 @@ function PlanPreview({ plan }: { plan: CursorPlan }) {
         <ul className="mt-1 space-y-1 text-sm">
           {plan.tomorrow_tasks.map((t, i) => (
             <li key={i} className="font-mono text-xs text-fg-muted">
-              <span className="text-fg">[{t.macro_goal_slug}]</span>{" "}
+              <span className="text-fg">[{t.macro_goal_slug}]</span>
+              {t.category === "work" && (
+                <span className="text-blue-300"> [work]</span>
+              )}{" "}
               {t.task_name}
             </li>
           ))}
