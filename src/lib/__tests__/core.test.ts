@@ -58,7 +58,11 @@ describe("buildCursorContextMarkdown", () => {
     goals: [{ id: "g1", user_id: "u", slug: "RICH", title: "RICH", visual_anchor_url: null, deadline: null, sort_order: 0, created_at: "" }],
     runs: [],
     deadlines: [],
-    workContext: "Verizon engineer on GEMS project",
+    workContext: {
+      verizon: "Verizon engineer on GEMS project",
+      freelance: "Afroz image slider client",
+      legacy: null,
+    },
     templates: [{ task_name: "Studied System Design", category: "personal", is_active: true }],
   };
 

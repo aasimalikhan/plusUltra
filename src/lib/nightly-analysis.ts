@@ -3,8 +3,10 @@ import { isGeminiConfigured } from "@/lib/analysis-env";
 import {
   buildCursorContextMarkdown,
   buildCursorFullPayload,
+  buildGeminiProPayload,
 } from "@/lib/context-formatter";
 import { getAnalysisProvider } from "@/lib/analysis-providers";
+import { isThinkingCapableModel, getGeminiModel } from "@/lib/analysis-env";
 import {
   parseAndValidateCursorPlan,
   validateCursorPlan,
@@ -120,15 +122,23 @@ export async function applyPlanForUser(
   const slugToId = new Map((goalsFull ?? []).map((g) => [g.slug, g.id] as const));
 
   const taskInserts = plan.tomorrow_tasks
-    .map((t) => ({
-      user_id: userId,
-      daily_plan_id: planRow.id,
-      macro_goal_id: slugToId.get(String(t.macro_goal_slug).toUpperCase()) ?? null,
-      task_name: t.task_name.trim(),
-      source: "cursor" as const,
-      category: t.category === "work" ? "work" : "personal",
-    }))
-    .filter((t) => t.task_name.length > 0);
+    .map((t) => {
+      const category = t.category === "work" ? "work" : "personal";
+      const row: Record<string, unknown> = {
+        user_id: userId,
+        daily_plan_id: planRow.id,
+        macro_goal_id: slugToId.get(String(t.macro_goal_slug).toUpperCase()) ?? null,
+        task_name: t.task_name.trim(),
+        source: "cursor" as const,
+        category,
+      };
+      if (category === "work") {
+        row.work_client =
+          t.work_client === "freelance" ? "freelance" : "verizon";
+      }
+      return row;
+    })
+    .filter((t) => String(t.task_name).trim().length > 0);
 
   let tasksCreated = 0;
   if (taskInserts.length > 0) {
@@ -210,10 +220,16 @@ export async function generateGeminiPlanForUser(
       loadAllowedSlugs(supabase, userId),
     ]);
     const rawInputMarkdown = buildCursorContextMarkdown(bundle);
-    const payload = buildCursorFullPayload(
-      bundle,
-      getAnalysisProvider("gemini").providerNote || undefined,
-    );
+
+    // Use the Pro payload (6-phase reasoning protocol) when the primary model
+    // supports extended thinking; fall back to the standard payload otherwise.
+    const primaryModel = getGeminiModel();
+    const payload = isThinkingCapableModel(primaryModel)
+      ? buildGeminiProPayload(bundle)
+      : buildCursorFullPayload(
+          bundle,
+          getAnalysisProvider("gemini").providerNote || undefined,
+        );
 
     const rawOutputText = await callGeminiAnalysis(payload);
     const validated = parseAndValidateCursorPlan(rawOutputText, allowedSlugs);

@@ -27,7 +27,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
-  if (!isGeminiConfigured()) {
+  const url = new URL(request.url);
+  const dryRun = url.searchParams.get("dryRun") === "1";
+
+  if (!isGeminiConfigured() && !dryRun) {
     return NextResponse.json(
       { ok: false, error: "GEMINI_API_KEY is not configured" },
       { status: 500 },
@@ -41,6 +44,15 @@ export async function GET(request: Request) {
 
   if (usersErr) {
     return NextResponse.json({ ok: false, error: usersErr.message }, { status: 500 });
+  }
+
+  if (dryRun) {
+    return NextResponse.json({
+      ok: true,
+      dryRun: true,
+      timezone: getAppTimezone(),
+      userCount: users?.length ?? 0,
+    });
   }
 
   const results: Array<{

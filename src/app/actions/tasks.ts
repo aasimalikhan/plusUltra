@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getServerDb } from "@/lib/db";
 import { formatDateISO, isEvening } from "@/lib/utils";
-import type { TaskStatus } from "@/lib/db-types";
+import type { TaskCategory, TaskStatus, WorkClient } from "@/lib/db-types";
 
 export async function setTaskStatus(taskId: string, status: TaskStatus) {
   const { supabase, userId } = await getServerDb();
@@ -38,6 +38,15 @@ export async function addTaskToToday(formData: FormData) {
   if (planErr || !plan) throw new Error(planErr?.message ?? "no plan");
 
   const taskCategory = categoryRaw === "work" ? "work" : "personal";
+  const workClientRaw = String(formData.get("work_client") ?? "");
+  const work_client =
+    taskCategory === "work" &&
+    (workClientRaw === "verizon" || workClientRaw === "freelance")
+      ? (workClientRaw as WorkClient)
+      : taskCategory === "work"
+        ? ("verizon" as WorkClient)
+        : null;
+
   const baseRow = {
     user_id: userId,
     daily_plan_id: plan.id,
@@ -46,16 +55,20 @@ export async function addTaskToToday(formData: FormData) {
     source: "manual" as const,
   };
 
-  let { error } = await supabase
-    .from("tasks")
-    .insert({ ...baseRow, category: taskCategory });
+  let { error } = await supabase.from("tasks").insert({
+    ...baseRow,
+    category: taskCategory,
+    ...(work_client ? { work_client } : {}),
+  });
 
   // Migration 0007 adds category column — fallback if not applied yet
   if (
     error &&
-    /category|schema cache/i.test(error.message)
+    /category|work_client|schema cache/i.test(error.message)
   ) {
-    ({ error } = await supabase.from("tasks").insert(baseRow));
+    ({ error } = await supabase
+      .from("tasks")
+      .insert({ ...baseRow, category: taskCategory }));
   }
 
   if (error) throw new Error(error.message);
@@ -88,11 +101,31 @@ export async function renameTask(taskId: string, task_name: string) {
   revalidatePath("/history");
 }
 
-export async function setTaskCategory(taskId: string, category: "personal" | "work") {
+export async function setTaskCategory(
+  taskId: string,
+  category: "personal" | "work",
+  workClient?: WorkClient,
+) {
+  const { supabase, userId } = await getServerDb();
+  const updates: Record<string, unknown> = {
+    category,
+    work_client:
+      category === "work" ? (workClient ?? "verizon") : null,
+  };
+  const { error } = await supabase
+    .from("tasks")
+    .update(updates)
+    .eq("id", taskId)
+    .eq("user_id", userId);
+  if (error) throw new Error(error.message);
+  revalidatePath("/today");
+}
+
+export async function setTaskWorkClient(taskId: string, workClient: WorkClient) {
   const { supabase, userId } = await getServerDb();
   const { error } = await supabase
     .from("tasks")
-    .update({ category })
+    .update({ category: "work", work_client: workClient })
     .eq("id", taskId)
     .eq("user_id", userId);
   if (error) throw new Error(error.message);

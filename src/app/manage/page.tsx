@@ -1,5 +1,9 @@
 import { requireUser } from "@/lib/auth/user";
-import { fetchMacroGoals, fetchTaskTemplates, fetchWorkContext } from "@/lib/queries";
+import {
+  fetchMacroGoals,
+  fetchTaskTemplates,
+  fetchWorkContextBundle,
+} from "@/lib/queries";
 import { getServerDb } from "@/lib/db";
 import { ensureDefaultTaskTemplates } from "@/lib/standard-tasks";
 import { ManageClient } from "./ManageClient";
@@ -11,10 +15,10 @@ export default async function ManagePage() {
   const { supabase, userId } = await getServerDb();
   await ensureDefaultTaskTemplates(supabase, userId);
 
-  const [templates, goals, workContext] = await Promise.all([
+  const [templates, goals, workContexts] = await Promise.all([
     fetchTaskTemplates(),
     fetchMacroGoals(),
-    fetchWorkContext(),
+    fetchWorkContextBundle(),
   ]);
 
   return (
@@ -23,10 +27,10 @@ export default async function ManagePage() {
         <p className="section-label">Configuration</p>
         <h1 className="h1 mt-1">Manage</h1>
         <p className="mt-2 text-sm text-fg-muted">
-          Standard daily tasks, work context for analysis, and system mechanics.
+          Standard daily tasks, Verizon + freelance context for analysis, and system mechanics.
         </p>
       </div>
-      <ManageClient templates={templates} goals={goals} workContext={workContext} />
+      <ManageClient templates={templates} goals={goals} workContexts={workContexts} />
     </div>
   );
 }

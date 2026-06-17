@@ -11,7 +11,7 @@ import {
   fetchTodayExecution,
   fetchTomorrowTaskCount,
   fetchUnresolvedJournalToday,
-  fetchWorkContext,
+  fetchWorkContextBundle,
   hasAnalysisRunToday,
 } from "@/lib/queries";
 import { autoMarkOverdueAsMissed } from "@/app/actions/tasks";
@@ -47,7 +47,7 @@ export default async function TodayPage() {
   const evening = isEvening();
   const debriefTime = isDebriefTime();
 
-  const [rules, goals, plan, personalRate, workRate, deadlines, workContext] =
+  const [rules, goals, plan, personalRate, workRate, deadlines, workContexts] =
     await Promise.all([
       fetchActiveRules(),
       fetchMacroGoals(),
@@ -55,7 +55,7 @@ export default async function TodayPage() {
       fetchSuccessRate(14, "personal"),
       fetchSuccessRate(14, "work"),
       fetchDeadlineGoals("active"),
-      fetchWorkContext(),
+      fetchWorkContextBundle(),
     ]);
 
   const tasks = plan ? await fetchTasksForPlan(plan.id) : [];
@@ -165,7 +165,7 @@ export default async function TodayPage() {
         workTasks={workTasks}
         richGoal={richGoal}
         untaggedCandidates={untaggedCandidates}
-        workContext={workContext}
+        workContexts={workContexts}
       />
 
       <RulesBanner rules={rules} />

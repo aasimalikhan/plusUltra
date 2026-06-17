@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { setTaskStatus, deleteTask, renameTask, setTaskCategory } from "@/app/actions/tasks";
+import { setTaskStatus, deleteTask, renameTask, setTaskWorkClient } from "@/app/actions/tasks";
 import type { Task, TaskStatus } from "@/lib/db-types";
 import { cn } from "@/lib/utils";
 
@@ -45,10 +45,9 @@ export function TaskRow({
     });
   }
 
-  function toggleCategory() {
-    const next = category === "work" ? "personal" : "work";
+  function promoteToWork(client: "verizon" | "freelance") {
     startTransition(async () => {
-      await setTaskCategory(task.id, next);
+      await setTaskWorkClient(task.id, client);
     });
   }
 
@@ -125,27 +124,27 @@ export function TaskRow({
       )}
 
       {category === "work" && (
-        <button
-          type="button"
-          onClick={toggleCategory}
-          className="pill border-blue-500/30 text-blue-300"
-          title="Click to mark personal"
-        >
-          work
-        </button>
+        <span className="pill border-blue-500/30 text-blue-300">
+          {task.work_client ?? "verizon"}
+        </span>
       )}
-      {category === "personal" && (showWorkPromote || task.source !== "standard") && (
-        <button
-          type="button"
-          onClick={toggleCategory}
-          className={cn(
-            "pill border-blue-500/30 text-blue-300",
-            !showWorkPromote && "opacity-0 transition-opacity group-hover:opacity-100",
-          )}
-          title="Move to Verizon work section"
-        >
-          {showWorkPromote ? "→ work" : "+ work"}
-        </button>
+      {category === "personal" && showWorkPromote && (
+        <span className="flex shrink-0 gap-1">
+          <button
+            type="button"
+            onClick={() => promoteToWork("verizon")}
+            className="pill border-blue-500/30 text-blue-300"
+          >
+            → Verizon
+          </button>
+          <button
+            type="button"
+            onClick={() => promoteToWork("freelance")}
+            className="pill border-violet-500/30 text-violet-300"
+          >
+            → Freelance
+          </button>
+        </span>
       )}
 
       {task.source === "cursor" && (

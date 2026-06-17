@@ -66,6 +66,16 @@ export function validateCursorPlan(
       };
     if (typeof tt.task_name !== "string" || !tt.task_name.trim())
       return { ok: false, error: "missing task_name" };
+    const cat = tt.category === "work" ? "work" : "personal";
+    if (cat === "work" && tt.work_client !== undefined) {
+      const wc = String(tt.work_client);
+      if (wc !== "verizon" && wc !== "freelance") {
+        return {
+          ok: false,
+          error: `work_client must be "verizon" or "freelance" when category is work`,
+        };
+      }
+    }
   }
 
   const citedJ = validateUuidList("cited_journal_ids", p.cited_journal_ids);

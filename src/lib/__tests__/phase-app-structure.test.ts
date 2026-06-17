@@ -25,6 +25,8 @@ const MIGRATIONS = [
   "0001_init.sql",
   "0006_deadline_goals.sql",
   "0007_task_templates_and_context.sql",
+  "0008_day_captures.sql",
+  "0009_work_clients.sql",
 ];
 
 describe("Phase 5 · app structure & migrations", () => {

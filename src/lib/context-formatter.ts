@@ -1,9 +1,15 @@
-import { ATTACK_MODE_ANALYST_FRAMEWORK, PLUSULTRA_APP_OPS } from "@/lib/analyst-framework";
+import {
+  ATTACK_MODE_ANALYST_FRAMEWORK,
+  PLUSULTRA_APP_OPS,
+  CURSOR_ANALYST_PROMPT,
+  GEMINI_PRO_ANALYST_PROMPT,
+} from "@/lib/analyst-framework";
 import {
   buildExecutionSummaryBlock,
   buildRecurringMissesBlock,
   buildTaskExecutionBlock,
 } from "@/lib/context-stats";
+import { formatWorkContextForAnalysis, type WorkContextBundle } from "@/lib/work-context";
 import type {
   AnalysisRun,
   DailyPlan,
@@ -30,39 +36,13 @@ export interface ContextBundle {
   runs: AnalysisRun[];
   deadlines: DeadlineGoalWithMilestones[];
   deadlineHistory?: DeadlineGoalWithMilestones[];
-  workContext?: string | null;
+  workContext?: WorkContextBundle | null;
   templates?: Array<{ task_name: string; category: string; is_active: boolean }>;
   captures?: DayCapture[];
 }
 
-export const CURSOR_ANALYST_PROMPT = `You are the nightly **logical-brain analyst** for plusUltra (Attack Mode framework above).
-
-Read LIVE DATA below. Apply the framework: repair-not-blame, fix-not-fixate, performance over output,
-deadlines are God, bounded feasible repairs, one lean tomorrow queue.
-
-Your job:
-1. Use **Execution summary** and **Recurring misses** to find system flaws — not character flaws.
-2. Read pointed journal — validate repairs (bounded blocks, not volume/hours). Cite full journal UUIDs.
-3. Mutate TOMORROW under macro_goal_slug values in LIVE DATA. Prioritize active deadlines; if zero,
-   queue deadline setup before tangential work.
-4. Weave day captures if present. Respect work [WORK] vs personal split.
-5. Update NEW ME rules: add/demote/deactivate by id. Do not stack duplicate tomorrow tasks.
-6. Cite full task UUIDs you reference. Never blame. Linear, specific language only.
-
-Constraints:
-- Return ONLY valid JSON. No prose around it. No markdown fences.
-- Schema:
-{
-  "summary": string,
-  "cited_journal_ids": string[],
-  "cited_task_ids": string[],
-  "tomorrow_tasks": [{ "macro_goal_slug": string, "task_name": string, "category"?: "personal" | "work" }],
-  "rule_changes": {
-    "add":        [{ "rule_text": string, "priority"?: number }],
-    "demote":     [{ "id": string, "priority": number }],
-    "deactivate": string[]
-  }
-}`;
+// Re-export prompts from analyst-framework so callers can import from here.
+export { CURSOR_ANALYST_PROMPT, GEMINI_PRO_ANALYST_PROMPT };
 
 export function buildCursorContextMarkdown(bundle: ContextBundle): string {
   const {
@@ -89,6 +69,12 @@ export function buildCursorContextMarkdown(bundle: ContextBundle): string {
   lines.push(...buildExecutionSummaryBlock(tasks, plans, goals));
   lines.push(...buildRecurringMissesBlock(tasks, goals));
 
+  lines.push(
+    ...formatWorkContextForAnalysis(
+      workContext ?? { verizon: null, freelance: null, legacy: null },
+    ),
+  );
+
   if ((captures ?? []).length > 0) {
     lines.push("## Day captures · raw notes for tonight (cleared after analysis applies)");
     for (const c of captures!) {
@@ -96,12 +82,6 @@ export function buildCursorContextMarkdown(bundle: ContextBundle): string {
         `- (id:${c.id}) ${c.created_at.slice(0, 16).replace("T", " ")} — ${c.content}`,
       );
     }
-    lines.push("");
-  }
-
-  if (workContext) {
-    lines.push("## Work context · Verizon (keep work tasks separate from personal standards)");
-    lines.push(workContext);
     lines.push("");
   }
 
@@ -231,6 +211,31 @@ export function buildCursorFullPayload(
   ].join("\n");
 }
 
+/**
+ * Full payload for Gemini 2.5 Pro: same structure as buildCursorFullPayload but
+ * uses GEMINI_PRO_ANALYST_PROMPT (6-phase reasoning protocol + task budget calibration
+ * + article/capture understanding). Pass this to callGeminiAnalysis when the primary
+ * model is a thinking-capable Pro variant.
+ */
+export function buildGeminiProPayload(bundle: ContextBundle): string {
+  const live = buildCursorContextMarkdown(bundle);
+  return [
+    ATTACK_MODE_ANALYST_FRAMEWORK,
+    "",
+    "---",
+    "",
+    PLUSULTRA_APP_OPS,
+    "",
+    "---",
+    "",
+    GEMINI_PRO_ANALYST_PROMPT,
+    "",
+    "---",
+    "",
+    live,
+  ].join("\n");
+}
+
 export interface ContextSummary {
   plans: number;
   tasks: number;
@@ -257,6 +262,8 @@ export function buildContextSummary(bundle: ContextBundle): ContextSummary {
     deadlineHistory: bundle.deadlineHistory?.length ?? 0,
     captures: bundle.captures?.length ?? 0,
     templates: (bundle.templates ?? []).filter((t) => t.is_active).length,
-    hasWorkContext: !!bundle.workContext?.trim(),
+    hasWorkContext:
+      !!bundle.workContext?.verizon?.trim() ||
+      !!bundle.workContext?.freelance?.trim(),
   };
 }

@@ -1,4 +1,5 @@
 import { getServerDb } from "@/lib/db";
+import { parseWorkContexts, type WorkContextBundle } from "@/lib/work-context";
 import { formatDateISO, tomorrowDateISO } from "@/lib/utils";
 import { formatDateISOInTz } from "@/lib/timezone";
 import { urgencyScore } from "@/lib/deadline-utils";
@@ -328,13 +329,25 @@ export async function fetchTaskTemplates(): Promise<TaskTemplate[]> {
 }
 
 export async function fetchWorkContext(): Promise<string | null> {
+  const bundle = await fetchWorkContextBundle();
+  return bundle.verizon;
+}
+
+export async function fetchWorkContextBundle(): Promise<WorkContextBundle> {
   const { supabase, userId } = await getServerDb();
+  return fetchWorkContextBundleForUser(supabase, userId);
+}
+
+export async function fetchWorkContextBundleForUser(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<WorkContextBundle> {
   const { data } = await supabase
     .from("profiles")
-    .select("work_context")
+    .select("work_context, work_context_verizon, work_context_freelance")
     .eq("id", userId)
     .maybeSingle();
-  return (data?.work_context as string | null) ?? null;
+  return parseWorkContexts(data);
 }
 
 export async function fetchRecentContext(days = 7) {
@@ -394,10 +407,10 @@ export async function fetchRecentContextForUser(
     ),
     supabase
       .from("profiles")
-      .select("work_context")
+      .select("work_context, work_context_verizon, work_context_freelance")
       .eq("id", userId)
       .maybeSingle()
-      .then((r) => (r.data?.work_context as string | null) ?? null),
+      .then((r) => parseWorkContexts(r.data)),
     supabase
       .from("task_templates")
       .select("*")

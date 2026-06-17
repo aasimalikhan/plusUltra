@@ -12,6 +12,8 @@ function slugForTask(task: Task, goalById: Map<string, MacroGoal>): string {
   return goalById.get(task.macro_goal_id)?.slug ?? "—";
 }
 
+import { resolveWorkClient } from "@/lib/work-context";
+
 function sourceTag(task: Task): string {
   if (task.source === "cursor") return "cursor";
   if (task.source === "standard") return "standard";
@@ -118,7 +120,13 @@ export function buildRecurringMissesBlock(
 
 export function formatTaskLine(task: Task, goalById: Map<string, MacroGoal>): string {
   const slug = slugForTask(task, goalById);
-  const work = (task.category ?? "personal") === "work" ? " [WORK]" : "";
+  const client = resolveWorkClient(task);
+  const work =
+    (task.category ?? "personal") === "work"
+      ? client
+        ? ` [WORK:${client}]`
+        : " [WORK]"
+      : "";
   const tag = sourceTag(task);
   const name = cleanTaskName(task.task_name);
   return `- [${task.status}] (${slug})${work} (id:${task.id}) ${name} · ${tag}`;

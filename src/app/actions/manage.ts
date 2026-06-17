@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getServerDb } from "@/lib/db";
-import type { TaskCategory } from "@/lib/db-types";
+import type { TaskCategory, WorkClient } from "@/lib/db-types";
 
 export async function fetchTaskTemplatesAction() {
   const { supabase, userId } = await getServerDb();
@@ -19,6 +19,11 @@ export async function addTaskTemplate(formData: FormData) {
   const task_name = String(formData.get("task_name") ?? "").trim();
   const macro_goal_id = String(formData.get("macro_goal_id") ?? "") || null;
   const category = (String(formData.get("category") ?? "personal") as TaskCategory) || "personal";
+  const workClientRaw = String(formData.get("work_client") ?? "");
+  const work_client =
+    category === "work" && (workClientRaw === "verizon" || workClientRaw === "freelance")
+      ? (workClientRaw as WorkClient)
+      : null;
   if (!task_name) return;
 
   const { data: maxRow } = await supabase
@@ -29,13 +34,16 @@ export async function addTaskTemplate(formData: FormData) {
     .limit(1)
     .maybeSingle();
 
-  const { error } = await supabase.from("task_templates").insert({
+  const row: Record<string, unknown> = {
     user_id: userId,
     macro_goal_id,
     task_name,
     category,
     sort_order: (maxRow?.sort_order ?? -1) + 1,
-  });
+  };
+  if (work_client) row.work_client = work_client;
+
+  const { error } = await supabase.from("task_templates").insert(row);
   if (error) throw new Error(error.message);
   revalidatePath("/manage");
   revalidatePath("/today");
@@ -47,6 +55,7 @@ export async function updateTaskTemplate(
     task_name: string;
     macro_goal_id: string | null;
     category: TaskCategory;
+    work_client: WorkClient | null;
     is_active: boolean;
     sort_order: number;
   }>,
@@ -75,12 +84,20 @@ export async function deleteTaskTemplate(id: string) {
 
 export async function saveWorkContext(formData: FormData) {
   const { supabase, userId } = await getServerDb();
-  const work_context = String(formData.get("work_context") ?? "").trim() || null;
+  const verizon =
+    String(formData.get("work_context_verizon") ?? "").trim() || null;
+  const freelance =
+    String(formData.get("work_context_freelance") ?? "").trim() || null;
   const { error } = await supabase
     .from("profiles")
-    .update({ work_context })
+    .update({
+      work_context_verizon: verizon,
+      work_context_freelance: freelance,
+      work_context: verizon,
+    })
     .eq("id", userId);
   if (error) throw new Error(error.message);
   revalidatePath("/manage");
   revalidatePath("/cursor");
+  revalidatePath("/today");
 }

@@ -1,6 +1,7 @@
 export type TaskStatus = "pending" | "done" | "missed";
 export type TaskSource = "manual" | "cursor" | "standard";
 export type TaskCategory = "personal" | "work";
+export type WorkClient = "verizon" | "freelance";
 export type AnalysisProvider = "cursor" | "gemini" | "chatgpt";
 /** Uppercase slug stored on macro_goals (built-in or custom). */
 export type MacroGoalSlug = string;
@@ -34,6 +35,7 @@ export interface Task {
   completed_at: string | null;
   source: TaskSource;
   category?: TaskCategory;
+  work_client?: WorkClient | null;
   created_at: string;
 }
 
@@ -43,6 +45,7 @@ export interface TaskTemplate {
   macro_goal_id: string | null;
   task_name: string;
   category: TaskCategory;
+  work_client?: WorkClient | null;
   is_active: boolean;
   sort_order: number;
   created_at: string;
@@ -52,6 +55,8 @@ export interface UserProfile {
   id: string;
   display_name: string | null;
   work_context: string | null;
+  work_context_verizon?: string | null;
+  work_context_freelance?: string | null;
   created_at: string;
 }
 
@@ -140,6 +145,7 @@ export interface CursorPlan {
     macro_goal_slug: MacroGoalSlug;
     task_name: string;
     category?: TaskCategory;
+    work_client?: WorkClient;
   }>;
   rule_changes?: {
     add?: Array<{ rule_text: string; priority?: number }>;

@@ -8,6 +8,7 @@ import {
   updateTaskTemplate,
 } from "@/app/actions/manage";
 import type { MacroGoal, TaskTemplate } from "@/lib/db-types";
+import type { WorkContextBundle } from "@/lib/work-context";
 
 function TemplateRow({
   template,
@@ -62,11 +63,11 @@ function TemplateRow({
 export function ManageClient({
   templates,
   goals,
-  workContext,
+  workContexts,
 }: {
   templates: TaskTemplate[];
   goals: MacroGoal[];
-  workContext: string | null;
+  workContexts: WorkContextBundle;
 }) {
   const [pending, startTransition] = useTransition();
 
@@ -121,25 +122,38 @@ export function ManageClient({
         </form>
       </section>
 
-      <section className="card space-y-3">
+      <section className="card space-y-4">
         <div>
-          <p className="section-label">Work context · Verizon</p>
+          <p className="section-label">Work context</p>
           <p className="mt-1 text-sm text-fg-muted">
-            Persistent context injected into every analysis run (Cursor / Gemini /
-            ChatGPT). Open loops, performance goals, team, current projects.
+            Injected into every Gemini analysis run. Keep Verizon (employer) and freelance
+            (side clients) separate — open loops, projects, performance notes.
           </p>
         </div>
         <form
           action={(fd) => startTransition(() => saveWorkContext(fd))}
-          className="space-y-2"
+          className="space-y-4"
         >
-          <textarea
-            name="work_context"
-            rows={8}
-            defaultValue={workContext ?? ""}
-            placeholder="e.g. Verizon software engineer. Current: GEMS Gallery UAT/prod release, vzgroups DB, DLM vulnerabilities. Performance issue: too many open loops, need one-in-one-out. Manager: …"
-            className="input font-mono text-xs"
-          />
+          <div className="space-y-2">
+            <label className="label">Verizon · employer</label>
+            <textarea
+              name="work_context_verizon"
+              rows={6}
+              defaultValue={workContexts.verizon ?? ""}
+              placeholder="e.g. Verizon software engineer. GEMS Gallery UAT, DLM vulnerabilities, one-in-one-out rule…"
+              className="input font-mono text-xs"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="label">Freelance · side clients</label>
+            <textarea
+              name="work_context_freelance"
+              rows={6}
+              defaultValue={workContexts.freelance ?? ""}
+              placeholder="e.g. Afroz uncle image slider, Cursor bills, mallsapp freelance tickets, In-Store Scanner app…"
+              className="input font-mono text-xs"
+            />
+          </div>
           <button type="submit" disabled={pending} className="btn btn-primary">
             Save work context
           </button>
