@@ -1,19 +1,24 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { applyCursorPlan } from "@/app/actions/cursor";
-import { parseCursorPlanJson } from "@/lib/cursor-plan-validation";
-import type { CursorPlan } from "@/lib/db-types";
+import Link from "next/link";
 import {
-  ANALYSIS_PROVIDERS,
-  type AnalysisProvider,
-} from "@/lib/analysis-providers";
+  applyCursorPlan,
+  generateAndApplyGeminiAnalysis,
+  generateGeminiAnalysis,
+  triggerNightlyAnalysisNow,
+} from "@/app/actions/cursor";
+import { parseCursorPlanJson } from "@/lib/cursor-plan-validation";
+import type { ContextSummary } from "@/lib/context-formatter";
+import type { CursorPlan } from "@/lib/db-types";
 
 interface Result {
   ok: boolean;
   error?: string;
   runId?: string;
   tasksCreated?: number;
+  skipped?: boolean;
+  reason?: string;
 }
 
 function tryParse(raw: string): { ok: true; plan: CursorPlan } | { ok: false; error: string } {
@@ -23,27 +28,62 @@ function tryParse(raw: string): { ok: true; plan: CursorPlan } | { ok: false; er
 }
 
 export function CursorBridge({
-  payloadsByProvider,
   markdown,
+  fullPayload,
+  contextSummary,
+  geminiApiEnabled,
+  runAlreadyToday,
+  captureCount,
+  timezone,
 }: {
-  payloadsByProvider: Record<AnalysisProvider, string>;
   markdown: string;
+  fullPayload: string;
+  contextSummary: ContextSummary;
+  geminiApiEnabled: boolean;
+  runAlreadyToday: boolean;
+  captureCount: number;
+  timezone: string;
 }) {
-  const [provider, setProvider] = useState<AnalysisProvider>("cursor");
   const [copied, setCopied] = useState(false);
   const [raw, setRaw] = useState("");
   const [parsedPreview, setParsedPreview] = useState<CursorPlan | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
+  const [generating, setGenerating] = useState(false);
   const [pending, startTransition] = useTransition();
 
-  const fullPayload = payloadsByProvider[provider];
-  const providerConfig = ANALYSIS_PROVIDERS.find((p) => p.id === provider)!;
+  async function runGeminiGenerate(applyAfter: boolean) {
+    setResult(null);
+    setParseError(null);
+    setGenerating(true);
+    try {
+      if (applyAfter) {
+        startTransition(async () => {
+          const res = await generateAndApplyGeminiAnalysis();
+          setResult(res);
+          setGenerating(false);
+          if (res.ok) {
+            setRaw("");
+            setParsedPreview(null);
+          }
+        });
+        return;
+      }
 
-  async function copy(text: string) {
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+      const res = await generateGeminiAnalysis();
+      setGenerating(false);
+      if (!res.ok) {
+        setParseError(res.error);
+        setParsedPreview(null);
+        return;
+      }
+      setRaw(res.rawOutputText);
+      setParsedPreview(res.plan);
+    } catch (err) {
+      setGenerating(false);
+      setParseError(err instanceof Error ? err.message : "Generation failed");
+      setParsedPreview(null);
+    }
   }
 
   function previewPlan() {
@@ -64,7 +104,7 @@ export function CursorBridge({
       const res = await applyCursorPlan({
         rawInputMarkdown: markdown,
         rawOutputText: JSON.stringify(parsedPreview),
-        provider,
+        provider: "gemini",
       });
       setResult(res);
       if (res.ok) {
@@ -74,71 +114,187 @@ export function CursorBridge({
     });
   }
 
+  function runFullPipelineNow() {
+    setResult(null);
+    startTransition(async () => {
+      const res = await triggerNightlyAnalysisNow();
+      setResult(res);
+    });
+  }
+
+  async function copyPayload() {
+    await navigator.clipboard.writeText(fullPayload);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
+
   return (
     <div className="space-y-5">
       <section className="card space-y-3">
         <header>
-          <h2 className="section-label">Provider</h2>
+          <h2 className="section-label">Context loaded for Gemini</h2>
           <p className="mt-1 text-sm text-fg-muted">
-            Same payload and JSON schema — paste into Cursor, Gemini, or ChatGPT.
-            Missed a night? Any provider works; paste JSON back here.
+            This is what gets sent when you click Run — briefing, analyst instructions, and 7
+            days of live data ({fullPayload.length.toLocaleString()} chars).
           </p>
         </header>
         <div className="flex flex-wrap gap-1.5">
-          {ANALYSIS_PROVIDERS.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => setProvider(p.id)}
-              className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
-                provider === p.id
-                  ? "border-fg bg-fg text-bg"
-                  : "border-bg-border text-fg-muted hover:text-fg"
-              }`}
-            >
-              {p.label}
-            </button>
+          {[
+            ["Tasks", contextSummary.tasks],
+            ["Journal", contextSummary.journal],
+            ["Deadlines", contextSummary.deadlines],
+            ["Goals", contextSummary.goals],
+            ["Rules", contextSummary.rules],
+            ["Captures", contextSummary.captures],
+            ["Prior runs", contextSummary.runs],
+          ].map(([label, count]) => (
+            <span key={label as string} className="pill">
+              {label}: {count as number}
+            </span>
           ))}
+          {contextSummary.hasWorkContext && (
+            <span className="pill">Work context</span>
+          )}
+          {contextSummary.templates > 0 && (
+            <span className="pill">Templates: {contextSummary.templates}</span>
+          )}
         </div>
-        <p className="text-xs text-fg-subtle">{providerConfig.description}</p>
-      </section>
-
-      <section className="card space-y-3">
-        <header className="flex items-center justify-between">
-          <h2 className="section-label">1 · Send to {providerConfig.label}</h2>
-        </header>
-        <p className="text-sm text-fg-muted">
-          Copy the full payload into a <strong className="font-normal text-fg">new chat</strong> —
-          briefing, analyst instructions, deadlines, work context, and 7 days of data.
-        </p>
         <button
           type="button"
-          onClick={() => copy(fullPayload)}
-          className="btn btn-primary h-auto min-h-10 w-full whitespace-normal px-4 py-2.5 text-center leading-snug"
+          onClick={copyPayload}
+          className="btn h-auto min-h-10 w-full whitespace-normal py-2.5"
         >
-          {copied ? "Copied" : `Copy everything (${providerConfig.label})`}
+          {copied ? "Copied full payload" : "Copy full payload (what Gemini receives)"}
         </button>
         <details className="rounded-md border border-bg-border bg-bg-subtle">
           <summary className="cursor-pointer px-3 py-2 text-xs text-fg-muted">
-            Preview payload ({fullPayload.length.toLocaleString()} chars)
+            Preview full payload
           </summary>
           <pre className="max-h-80 overflow-auto whitespace-pre-wrap px-3 py-2 font-mono text-[11px] leading-relaxed text-fg-muted">
             {fullPayload}
           </pre>
         </details>
+        <details className="rounded-md border border-bg-border bg-bg-subtle">
+          <summary className="cursor-pointer px-3 py-2 text-xs text-fg-muted">
+            Preview live data only ({markdown.length.toLocaleString()} chars — stored in analysis_runs)
+          </summary>
+          <pre className="max-h-80 overflow-auto whitespace-pre-wrap px-3 py-2 font-mono text-[11px] leading-relaxed text-fg-muted">
+            {markdown}
+          </pre>
+        </details>
+      </section>
+
+      <section className="card space-y-3 border-emerald-500/25 bg-emerald-500/[0.03]">
+        <header>
+          <h2 className="section-label">Gemini · automated analysis</h2>
+          <p className="mt-1 text-sm text-fg-muted">
+            One API call per day. Sends 7 days of tasks, journal, deadlines, goals, rules, and{" "}
+            {captureCount > 0 ? (
+              <strong className="font-normal text-fg">{captureCount} day capture{captureCount === 1 ? "" : "s"}</strong>
+            ) : (
+              "day captures"
+            )}{" "}
+            to Gemini. Returns structured JSON → tomorrow&apos;s tasks + rule changes.
+          </p>
+          <p className="mt-1 text-xs text-fg-subtle">
+            Auto-runs at local midnight ({timezone}) via cron. You can also run manually below.
+          </p>
+        </header>
+
+        {runAlreadyToday ? (
+          <div className="rounded-md border border-emerald-500/30 bg-emerald-500/[0.06] px-3 py-2.5 text-sm text-emerald-200/90">
+            <p className="font-medium">Tonight&apos;s analysis is done</p>
+            <p className="mt-1 text-xs text-emerald-200/70">
+              One run per day. View results on{" "}
+              <Link href="/insights" className="underline hover:text-emerald-100">
+                /insights
+              </Link>{" "}
+              or edit tomorrow on{" "}
+              <Link href="/today" className="underline hover:text-emerald-100">
+                /today
+              </Link>
+              .
+            </p>
+          </div>
+        ) : geminiApiEnabled ? (
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => runGeminiGenerate(false)}
+              disabled={generating || pending}
+              className="btn h-auto min-h-10 w-full whitespace-normal py-2.5"
+            >
+              {generating ? "Calling Gemini…" : "Preview only"}
+            </button>
+            <button
+              type="button"
+              onClick={() => runGeminiGenerate(true)}
+              disabled={generating || pending}
+              className="btn btn-primary h-auto min-h-10 w-full whitespace-normal py-2.5"
+            >
+              {generating || pending ? "Working…" : "Run & apply now"}
+            </button>
+          </div>
+        ) : (
+          <div className="rounded-md border border-amber-500/30 bg-amber-500/[0.04] px-3 py-2.5 text-sm text-amber-200/90">
+            <p className="font-medium">API key not configured</p>
+            <p className="mt-1 text-xs text-amber-200/70">
+              Add <code className="font-mono">GEMINI_API_KEY</code> to{" "}
+              <code className="font-mono">.env.local</code>. Get a free key at{" "}
+              <a
+                href="https://aistudio.google.com/apikey"
+                target="_blank"
+                rel="noreferrer"
+                className="underline hover:text-amber-100"
+              >
+                Google AI Studio
+              </a>
+              .
+            </p>
+          </div>
+        )}
+
+        {captureCount === 0 && !runAlreadyToday && (
+          <p className="text-xs text-fg-subtle">
+            No day captures yet —{" "}
+            <Link href="/captures" className="underline hover:text-fg-muted">
+              add reels & thoughts on /captures
+            </Link>{" "}
+            before tonight&apos;s run.
+          </p>
+        )}
+
+        {parseError && <p className="text-xs text-red-400">{parseError}</p>}
       </section>
 
       <section className="card space-y-3">
         <header>
-          <h2 className="section-label">2 · Paste JSON back</h2>
+          <h2 className="section-label">Midnight pipeline</h2>
           <p className="mt-1 text-sm text-fg-muted">
-            Paste the JSON from {providerConfig.label}. Triple-backtick fences are tolerated.
+            Same as the cron job: lock today → Gemini → apply tomorrow → clear captures.
           </p>
         </header>
+        <button
+          type="button"
+          onClick={runFullPipelineNow}
+          disabled={pending || !geminiApiEnabled}
+          className="btn w-full"
+        >
+          {pending ? "Running…" : "Run full midnight pipeline now"}
+        </button>
+      </section>
+
+      <details className="card space-y-3">
+        <summary className="cursor-pointer text-sm text-fg-muted">
+          Advanced · manual JSON fallback
+        </summary>
+        <p className="text-sm text-fg-muted">
+          Only if the API fails. Paste validated JSON from any LLM. Still limited to one apply per day.
+        </p>
         <textarea
           value={raw}
           onChange={(e) => setRaw(e.target.value)}
-          rows={10}
+          rows={8}
           className="input font-mono text-xs"
           placeholder='{ "summary": "...", "tomorrow_tasks": [...], "rule_changes": {...} }'
         />
@@ -154,7 +310,7 @@ export function CursorBridge({
           <button
             type="button"
             onClick={applyPlan}
-            disabled={!parsedPreview || pending}
+            disabled={!parsedPreview || pending || runAlreadyToday}
             className="btn btn-primary h-auto min-h-10 w-full whitespace-normal py-2.5"
           >
             {pending ? "Applying…" : "Apply plan"}
@@ -163,9 +319,8 @@ export function CursorBridge({
         {parseError && (
           <p className="text-xs text-red-400">JSON parse error: {parseError}</p>
         )}
-      </section>
-
-      {parsedPreview && <PlanPreview plan={parsedPreview} />}
+        {parsedPreview && <PlanPreview plan={parsedPreview} />}
+      </details>
 
       {result && (
         <section
@@ -176,11 +331,14 @@ export function CursorBridge({
           }`}
         >
           {result.ok ? (
-            <p className="text-sm text-emerald-300">
-              Plan applied via {providerConfig.label}. Created {result.tasksCreated ?? 0}{" "}
-              tasks for tomorrow. Run id:{" "}
-              <span className="font-mono text-xs">{result.runId}</span>
-            </p>
+            result.skipped ? (
+              <p className="text-sm text-fg-muted">{result.reason ?? "Skipped"}</p>
+            ) : (
+              <p className="text-sm text-emerald-300">
+                Plan applied. Created {result.tasksCreated ?? 0} tasks for tomorrow. Run id:{" "}
+                <span className="font-mono text-xs">{result.runId}</span>
+              </p>
+            )
           ) : (
             <p className="text-sm text-red-300">Failed: {result.error}</p>
           )}
@@ -192,7 +350,7 @@ export function CursorBridge({
 
 function PlanPreview({ plan }: { plan: CursorPlan }) {
   return (
-    <section className="card space-y-3">
+    <section className="space-y-3 border-t border-bg-border pt-3">
       <h3 className="section-label">Diff preview</h3>
       <p className="text-sm text-fg">
         <span className="text-fg-subtle">Summary:</span> {plan.summary}
@@ -226,35 +384,6 @@ function PlanPreview({ plan }: { plan: CursorPlan }) {
               </ul>
             </div>
           )}
-          {plan.rule_changes.demote && plan.rule_changes.demote.length > 0 && (
-            <div>
-              <p className="label">
-                Demote rules ({plan.rule_changes.demote.length})
-              </p>
-              <ul className="mt-1 space-y-0.5 font-mono">
-                {plan.rule_changes.demote.map((d, i) => (
-                  <li key={i}>
-                    <span className="text-fg">~</span> {d.id} → p{d.priority}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {plan.rule_changes.deactivate &&
-            plan.rule_changes.deactivate.length > 0 && (
-              <div>
-                <p className="label">
-                  Deactivate rules ({plan.rule_changes.deactivate.length})
-                </p>
-                <ul className="mt-1 space-y-0.5 font-mono">
-                  {plan.rule_changes.deactivate.map((id, i) => (
-                    <li key={i}>
-                      <span className="text-red-400">-</span> {id}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
         </div>
       )}
     </section>

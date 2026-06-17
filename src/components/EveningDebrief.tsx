@@ -72,11 +72,11 @@ export function EveningDebrief({
     },
     {
       key: "cursor",
-      label: "Run Cursor analysis",
+      label: "Run nightly analysis",
       done: cursorDone,
       detail: cursorDone
-        ? "Tonight's run applied — tomorrow's plan mutated"
-        : "Copy context → paste JSON back on /cursor",
+        ? "Tonight's run applied — tomorrow's plan mutated (auto at midnight or manual on /cursor)"
+        : "Runs automatically at midnight via Gemini — or trigger on /cursor",
     },
   ] as const;
 
@@ -164,7 +164,7 @@ export function EveningDebrief({
           )}
           {!cursorDone && (
             <Link href="/cursor" className="btn btn-primary">
-              Open Cursor analyst →
+              Run analysis →
             </Link>
           )}
           {debriefComplete && (

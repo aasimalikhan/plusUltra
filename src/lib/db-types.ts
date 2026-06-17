@@ -125,6 +125,13 @@ export interface DeadlineGoalWithMilestones extends DeadlineGoal {
   milestones: DeadlineMilestone[];
 }
 
+export interface DayCapture {
+  id: string;
+  user_id: string;
+  content: string;
+  created_at: string;
+}
+
 export interface CursorPlan {
   summary: string;
   cited_journal_ids?: string[];

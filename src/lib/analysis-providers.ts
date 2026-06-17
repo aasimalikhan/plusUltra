@@ -6,6 +6,8 @@ export interface AnalysisProviderConfig {
   description: string;
   /** Extra instructions appended when using this provider. */
   providerNote: string;
+  /** When true, the app can call this provider's API directly (server-side). */
+  supportsDirectApi?: boolean;
 }
 
 export const ANALYSIS_PROVIDERS: AnalysisProviderConfig[] = [
@@ -18,9 +20,11 @@ export const ANALYSIS_PROVIDERS: AnalysisProviderConfig[] = [
   {
     id: "gemini",
     label: "Gemini",
-    description: "Same payload works in Google Gemini (gemini.google.com or API). Paste JSON back here.",
+    description:
+      "Generate directly via Gemini API (1 call/day) or copy/paste into gemini.google.com.",
     providerNote:
       "You are running inside Google Gemini. Follow the JSON schema exactly. No markdown fences.",
+    supportsDirectApi: true,
   },
   {
     id: "chatgpt",

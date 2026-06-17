@@ -2,122 +2,175 @@
 
 import { revalidatePath } from "next/cache";
 import { getServerDb } from "@/lib/db";
-import { formatDateISO } from "@/lib/utils";
+import { isGeminiConfigured } from "@/lib/analysis-env";
+import {
+  buildCursorContextMarkdown,
+  buildCursorFullPayload,
+} from "@/lib/context-formatter";
+import { getAnalysisProvider } from "@/lib/analysis-providers";
+import { parseCursorPlanJson } from "@/lib/cursor-plan-validation";
+import { hasAnalysisRunToday } from "@/lib/queries";
+import {
+  applyPlanForUser,
+  generateGeminiPlanForUser,
+  runNightlyAnalysisForUser,
+} from "@/lib/nightly-analysis";
 import type { CursorPlan } from "@/lib/db-types";
-import { validateCursorPlan } from "@/lib/cursor-plan-validation";
 
-export async function applyCursorPlan(opts: {
-  rawInputMarkdown: string;
-  rawOutputText: string;
-  provider?: "cursor" | "gemini" | "chatgpt";
-}): Promise<{ ok: boolean; error?: string; runId?: string; tasksCreated?: number }> {
-  const { supabase, userId } = await getServerDb();
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(opts.rawOutputText);
-  } catch (err) {
-    return { ok: false, error: `Could not parse JSON: ${(err as Error).message}` };
-  }
-  const { data: goals } = await supabase
-    .from("macro_goals")
-    .select("slug")
-    .eq("user_id", userId);
-  const allowedSlugs = new Set((goals ?? []).map((g) => g.slug as string));
-
-  const v = validateCursorPlan(parsed, allowedSlugs);
-  if (!v.ok) return { ok: false, error: v.error };
-  const plan = v.plan;
-
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowISO = formatDateISO(tomorrow);
-
-  const { data: planRow, error: planErr } = await supabase
-    .from("daily_plans")
-    .upsert(
-      { user_id: userId, plan_date: tomorrowISO },
-      { onConflict: "user_id,plan_date" },
-    )
-    .select("id")
-    .single();
-  if (planErr || !planRow) return { ok: false, error: planErr?.message ?? "no plan" };
-
-  const { data: goalsFull } = await supabase
-    .from("macro_goals")
-    .select("id, slug")
-    .eq("user_id", userId);
-  const slugToId = new Map((goalsFull ?? []).map((g) => [g.slug, g.id] as const));
-
-  const taskInserts = plan.tomorrow_tasks
-    .map((t) => ({
-      user_id: userId,
-      daily_plan_id: planRow.id,
-      macro_goal_id: slugToId.get(String(t.macro_goal_slug).toUpperCase()) ?? null,
-      task_name: t.task_name.trim(),
-      source: "cursor" as const,
-      category: t.category === "work" ? "work" : "personal",
-    }))
-    .filter((t) => t.task_name.length > 0);
-
-  let tasksCreated = 0;
-  if (taskInserts.length > 0) {
-    const { data: inserted, error: insErr } = await supabase
-      .from("tasks")
-      .insert(taskInserts)
-      .select("id");
-    if (insErr) return { ok: false, error: `tasks insert failed: ${insErr.message}` };
-    tasksCreated = inserted?.length ?? 0;
-  }
-
-  const rc = plan.rule_changes ?? {};
-  if (rc.add && rc.add.length > 0) {
-    const ruleInserts = rc.add.map((r) => ({
-      user_id: userId,
-      rule_text: r.rule_text,
-      priority: r.priority ?? 100,
-      last_relevant_at: new Date().toISOString(),
-    }));
-    await supabase.from("rules").insert(ruleInserts);
-  }
-  if (rc.demote) {
-    for (const d of rc.demote) {
-      await supabase
-        .from("rules")
-        .update({ priority: d.priority })
-        .eq("id", d.id)
-        .eq("user_id", userId);
+export type GeminiAnalysisResult =
+  | {
+      ok: true;
+      plan: CursorPlan;
+      rawOutputText: string;
+      rawInputMarkdown: string;
     }
-  }
-  if (rc.deactivate && rc.deactivate.length > 0) {
-    await supabase
-      .from("rules")
-      .update({ is_active: false })
-      .in("id", rc.deactivate)
-      .eq("user_id", userId);
+  | { ok: false; error: string };
+
+export async function generateGeminiAnalysis(): Promise<GeminiAnalysisResult> {
+  if (!isGeminiConfigured()) {
+    return {
+      ok: false,
+      error:
+        "GEMINI_API_KEY is not configured. Add it to .env.local and restart the dev server.",
+    };
   }
 
-  const { data: run, error: runErr } = await supabase
-    .from("analysis_runs")
-    .insert({
-      user_id: userId,
-      run_date: formatDateISO(),
-      cited_journal_ids: plan.cited_journal_ids ?? [],
-      cited_task_ids: plan.cited_task_ids ?? [],
-      cursor_raw_input: { markdown: opts.rawInputMarkdown },
-      cursor_raw_output: plan,
-      summary: plan.summary,
-      provider: opts.provider ?? "cursor",
-    })
-    .select("id")
-    .single();
-  if (runErr) return { ok: false, error: `analysis_runs insert failed: ${runErr.message}` };
+  if (await hasAnalysisRunToday()) {
+    return {
+      ok: false,
+      error: "Analysis already ran today. One Gemini call per day — check /insights or wait until tomorrow.",
+    };
+  }
+
+  const { supabase, userId } = await getServerDb();
+  const generated = await generateGeminiPlanForUser(supabase, userId);
+  return generated;
+}
+
+export async function generateAndApplyGeminiAnalysis(): Promise<{
+  ok: boolean;
+  error?: string;
+  runId?: string;
+  tasksCreated?: number;
+}> {
+  if (!isGeminiConfigured()) {
+    return {
+      ok: false,
+      error:
+        "GEMINI_API_KEY is not configured. Add it to .env.local and restart the dev server.",
+    };
+  }
+
+  const { supabase, userId } = await getServerDb();
+  const result = await runNightlyAnalysisForUser(supabase, userId, {
+    skipIfAlreadyRun: true,
+    forceLock: false,
+  });
+
+  if (!result.ok) return { ok: false, error: result.error };
+  if (result.skipped) return { ok: false, error: result.reason };
 
   revalidatePath("/today");
   revalidatePath("/rules");
   revalidatePath("/history");
   revalidatePath("/cursor");
   revalidatePath("/deadlines");
+  revalidatePath("/captures");
+  revalidatePath("/insights");
 
-  return { ok: true, runId: run?.id, tasksCreated };
+  return {
+    ok: true,
+    runId: result.runId,
+    tasksCreated: result.tasksCreated,
+  };
+}
+
+export async function applyCursorPlan(opts: {
+  rawInputMarkdown: string;
+  rawOutputText: string;
+  provider?: "cursor" | "gemini" | "chatgpt";
+}): Promise<{ ok: boolean; error?: string; runId?: string; tasksCreated?: number }> {
+  if (await hasAnalysisRunToday()) {
+    return {
+      ok: false,
+      error: "Analysis already ran today. One run per day — edit tomorrow on /today if needed.",
+    };
+  }
+
+  const parsed = parseCursorPlanJson(opts.rawOutputText);
+  if (!parsed.ok) return { ok: false, error: parsed.error };
+
+  const { supabase, userId } = await getServerDb();
+  const applied = await applyPlanForUser(supabase, userId, {
+    rawInputMarkdown: opts.rawInputMarkdown,
+    rawOutputText: JSON.stringify(parsed.parsed),
+    provider: opts.provider ?? "cursor",
+  });
+  if (!applied.ok) return applied;
+
+  revalidatePath("/today");
+  revalidatePath("/rules");
+  revalidatePath("/history");
+  revalidatePath("/cursor");
+  revalidatePath("/deadlines");
+  revalidatePath("/captures");
+  revalidatePath("/insights");
+
+  return applied;
+}
+
+/** Manual trigger — same pipeline as midnight cron, for testing or catch-up. */
+export async function triggerNightlyAnalysisNow(): Promise<{
+  ok: boolean;
+  error?: string;
+  runId?: string;
+  tasksCreated?: number;
+  skipped?: boolean;
+  reason?: string;
+}> {
+  if (!isGeminiConfigured()) {
+    return { ok: false, error: "GEMINI_API_KEY is not configured." };
+  }
+
+  const { supabase, userId } = await getServerDb();
+  const result = await runNightlyAnalysisForUser(supabase, userId, {
+    skipIfAlreadyRun: true,
+    forceLock: true,
+  });
+
+  if (!result.ok) return { ok: false, error: result.error };
+  if (result.skipped) {
+    return { ok: true, skipped: true, reason: result.reason };
+  }
+
+  revalidatePath("/today");
+  revalidatePath("/rules");
+  revalidatePath("/history");
+  revalidatePath("/cursor");
+  revalidatePath("/deadlines");
+  revalidatePath("/captures");
+  revalidatePath("/insights");
+
+  return {
+    ok: true,
+    runId: result.runId,
+    tasksCreated: result.tasksCreated,
+  };
+}
+
+export async function previewAnalysisPayload(): Promise<string> {
+  const { supabase, userId } = await getServerDb();
+  const { fetchRecentContextForUser } = await import("@/lib/queries");
+  const bundle = await fetchRecentContextForUser(supabase, userId, 7);
+  return buildCursorFullPayload(
+    bundle,
+    getAnalysisProvider("gemini").providerNote || undefined,
+  );
+}
+
+export async function previewAnalysisMarkdown(): Promise<string> {
+  const { supabase, userId } = await getServerDb();
+  const { fetchRecentContextForUser } = await import("@/lib/queries");
+  const bundle = await fetchRecentContextForUser(supabase, userId, 7);
+  return buildCursorContextMarkdown(bundle);
 }

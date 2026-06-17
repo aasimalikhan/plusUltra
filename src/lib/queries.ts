@@ -1,6 +1,8 @@
 import { getServerDb } from "@/lib/db";
 import { formatDateISO, tomorrowDateISO } from "@/lib/utils";
+import { formatDateISOInTz } from "@/lib/timezone";
 import { urgencyScore } from "@/lib/deadline-utils";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   MacroGoal,
   Task,
@@ -12,6 +14,7 @@ import type {
   DeadlineMilestone,
   DeadlineGoalWithMilestones,
   TaskTemplate,
+  DayCapture,
 } from "@/lib/db-types";
 
 export async function fetchActiveRules(): Promise<Rule[]> {
@@ -209,13 +212,43 @@ export async function fetchMissedTasksNeedingJournal(
 
 export async function hasAnalysisRunToday(): Promise<boolean> {
   const { supabase, userId } = await getServerDb();
-  const today = formatDateISO();
+  return hasAnalysisRunOnDate(supabase, userId, formatDateISOInTz());
+}
+
+export async function hasAnalysisRunOnDate(
+  supabase: SupabaseClient,
+  userId: string,
+  runDate: string,
+): Promise<boolean> {
   const { count } = await supabase
     .from("analysis_runs")
     .select("id", { count: "exact", head: true })
     .eq("user_id", userId)
-    .eq("run_date", today);
+    .eq("run_date", runDate);
   return (count ?? 0) > 0;
+}
+
+export async function fetchDayCaptures(): Promise<DayCapture[]> {
+  const { supabase, userId } = await getServerDb();
+  return fetchDayCapturesForUser(supabase, userId);
+}
+
+export async function fetchDayCapturesForUser(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<DayCapture[]> {
+  const { data, error } = await supabase
+    .from("day_captures")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: true });
+  if (error) {
+    if (/day_captures|schema cache|does not exist/i.test(error.message)) {
+      return [];
+    }
+    throw new Error(error.message);
+  }
+  return (data ?? []) as DayCapture[];
 }
 
 export async function fetchTomorrowTaskCount(): Promise<number> {
@@ -238,11 +271,11 @@ export async function fetchTomorrowTaskCount(): Promise<number> {
   return count ?? 0;
 }
 
-export async function fetchDeadlineGoals(
+export async function fetchDeadlineGoalsForUser(
+  supabase: SupabaseClient,
+  userId: string,
   status: "active" | "completed" | "paused" | "all" = "active",
 ): Promise<DeadlineGoalWithMilestones[]> {
-  const { supabase, userId } = await getServerDb();
-
   let q = supabase
     .from("deadline_goals")
     .select("*")
@@ -277,6 +310,13 @@ export async function fetchDeadlineGoals(
     .sort((a, b) => urgencyScore(b) - urgencyScore(a));
 }
 
+export async function fetchDeadlineGoals(
+  status: "active" | "completed" | "paused" | "all" = "active",
+): Promise<DeadlineGoalWithMilestones[]> {
+  const { supabase, userId } = await getServerDb();
+  return fetchDeadlineGoalsForUser(supabase, userId, status);
+}
+
 export async function fetchTaskTemplates(): Promise<TaskTemplate[]> {
   const { supabase, userId } = await getServerDb();
   const { data } = await supabase
@@ -299,11 +339,19 @@ export async function fetchWorkContext(): Promise<string | null> {
 
 export async function fetchRecentContext(days = 7) {
   const { supabase, userId } = await getServerDb();
+  return fetchRecentContextForUser(supabase, userId, days);
+}
+
+export async function fetchRecentContextForUser(
+  supabase: SupabaseClient,
+  userId: string,
+  days = 7,
+) {
   const since = new Date();
   since.setDate(since.getDate() - days);
   const sinceDate = since.toISOString().slice(0, 10);
 
-  const [plans, tasks, journal, rules, goals, runs, deadlines, workContext, templates] =
+  const [plans, tasks, journal, rules, goals, runs, deadlines, deadlineHistory, workContext, templates, captures] =
     await Promise.all([
     supabase
       .from("daily_plans")
@@ -340,9 +388,23 @@ export async function fetchRecentContext(days = 7) {
       .eq("user_id", userId)
       .gte("run_date", sinceDate)
       .order("run_date", { ascending: true }),
-    fetchDeadlineGoals("active"),
-    fetchWorkContext(),
-    fetchTaskTemplates(),
+    fetchDeadlineGoalsForUser(supabase, userId, "active"),
+    fetchDeadlineGoalsForUser(supabase, userId, "all").then((all) =>
+      all.filter((d) => d.status !== "active"),
+    ),
+    supabase
+      .from("profiles")
+      .select("work_context")
+      .eq("id", userId)
+      .maybeSingle()
+      .then((r) => (r.data?.work_context as string | null) ?? null),
+    supabase
+      .from("task_templates")
+      .select("*")
+      .eq("user_id", userId)
+      .order("sort_order")
+      .then((r) => (r.data ?? []) as TaskTemplate[]),
+    fetchDayCapturesForUser(supabase, userId),
   ]);
 
   return {
@@ -353,8 +415,10 @@ export async function fetchRecentContext(days = 7) {
     goals: (goals.data ?? []) as MacroGoal[],
     runs: (runs.data ?? []) as AnalysisRun[],
     deadlines,
+    deadlineHistory,
     workContext,
     templates,
+    captures,
   };
 }
 

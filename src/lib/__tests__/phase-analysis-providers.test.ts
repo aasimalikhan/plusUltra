@@ -9,7 +9,7 @@ import {
   buildCursorContextMarkdown,
   CURSOR_ANALYST_PROMPT,
 } from "@/lib/context-formatter";
-import { PLUSULTRA_APP_BRIEFING } from "@/lib/app-briefing";
+import { ATTACK_MODE_ANALYST_FRAMEWORK, PLUSULTRA_APP_BRIEFING } from "@/lib/app-briefing";
 
 describe("Phase 4 · analysis bridge", () => {
   it("supports cursor, gemini, chatgpt", () => {
@@ -28,6 +28,27 @@ describe("Phase 4 · analysis bridge", () => {
   });
 
   it("full payload includes briefing, prompt, and live data", () => {
+    const empty = {
+      plans: [],
+      tasks: [],
+      journal: [],
+      rules: [],
+      goals: [],
+      runs: [],
+      deadlines: [],
+      captures: [],
+    };
+    const md = buildCursorContextMarkdown(empty);
+    const full = buildCursorFullPayload(empty);
+    expect(full).toContain(ATTACK_MODE_ANALYST_FRAMEWORK.slice(0, 40));
+    expect(full).toContain(CURSOR_ANALYST_PROMPT.slice(0, 40));
+    expect(full).toContain("LIVE DATA");
+    expect(full).toContain("Execution summary");
+    expect(md).toContain("Deadline goals");
+    expect(PLUSULTRA_APP_BRIEFING).toContain("Attack Mode");
+  });
+
+  it("includes day captures in live data markdown", () => {
     const md = buildCursorContextMarkdown({
       plans: [],
       tasks: [],
@@ -36,19 +57,16 @@ describe("Phase 4 · analysis bridge", () => {
       goals: [],
       runs: [],
       deadlines: [],
+      captures: [
+        {
+          id: "abc-123",
+          user_id: "u1",
+          content: "Reel on sleep hygiene",
+          created_at: "2026-06-17T14:00:00Z",
+        },
+      ],
     });
-    const full = buildCursorFullPayload({
-      plans: [],
-      tasks: [],
-      journal: [],
-      rules: [],
-      goals: [],
-      runs: [],
-      deadlines: [],
-    });
-    expect(full).toContain(PLUSULTRA_APP_BRIEFING.slice(0, 40));
-    expect(full).toContain(CURSOR_ANALYST_PROMPT.slice(0, 40));
-    expect(full).toContain("LIVE DATA");
-    expect(md).toContain("Deadline goals");
+    expect(md).toContain("Day captures");
+    expect(md).toContain("sleep hygiene");
   });
 });

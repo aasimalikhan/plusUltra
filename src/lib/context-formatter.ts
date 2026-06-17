@@ -1,7 +1,13 @@
-import { PLUSULTRA_APP_BRIEFING } from "@/lib/app-briefing";
+import { ATTACK_MODE_ANALYST_FRAMEWORK, PLUSULTRA_APP_OPS } from "@/lib/analyst-framework";
+import {
+  buildExecutionSummaryBlock,
+  buildRecurringMissesBlock,
+  buildTaskExecutionBlock,
+} from "@/lib/context-stats";
 import type {
   AnalysisRun,
   DailyPlan,
+  DayCapture,
   DeadlineGoalWithMilestones,
   MacroGoal,
   PointedJournal,
@@ -23,24 +29,25 @@ export interface ContextBundle {
   goals: MacroGoal[];
   runs: AnalysisRun[];
   deadlines: DeadlineGoalWithMilestones[];
+  deadlineHistory?: DeadlineGoalWithMilestones[];
   workContext?: string | null;
   templates?: Array<{ task_name: string; category: string; is_active: boolean }>;
+  captures?: DayCapture[];
 }
 
-export const CURSOR_ANALYST_PROMPT = `You are the nightly **logical-brain analyst** for plusUltra (see SYSTEM briefing above).
+export const CURSOR_ANALYST_PROMPT = `You are the nightly **logical-brain analyst** for plusUltra (Attack Mode framework above).
 
-Read LIVE DATA: last 7 days of tasks (done/missed/pending), pointed journal (triggers, thoughts,
-emotional impact %, repairs, schemas), active NEW ME rules (with ids), macro goals + deadlines,
-deadline goals (V.IMP — importance, target dates, milestone progress, implementation notes),
-and prior analysis run summaries.
+Read LIVE DATA below. Apply the framework: repair-not-blame, fix-not-fixate, performance over output,
+deadlines are God, bounded feasible repairs, one lean tomorrow queue.
 
 Your job:
-1. Identify failure patterns and recurring triggers across the week. Cite specific journal IDs and task IDs — **full UUIDs exactly as shown in LIVE DATA** (e.g. b022c94e-3aa5-495f-a671-fd20b2794d17), never short prefixes.
-2. Mutate TOMORROW's task list under the user's macro_goal_slug values listed in LIVE DATA. Pivot on evidence — fix not fixate.
-3. Prioritize tomorrow's tasks toward active deadline goals — **deadlines are God**. Overdue or <14d deadlines with low milestone progress need direct daily work, not tangential tasks.
-4. Update NEW ME rules: add for repeated patterns; demote stale (higher priority number); deactivate
-   resolved patterns by id.
-5. Never blame. No generic motivation. Linear, specific, system-focused language only.
+1. Use **Execution summary** and **Recurring misses** to find system flaws — not character flaws.
+2. Read pointed journal — validate repairs (bounded blocks, not volume/hours). Cite full journal UUIDs.
+3. Mutate TOMORROW under macro_goal_slug values in LIVE DATA. Prioritize active deadlines; if zero,
+   queue deadline setup before tangential work.
+4. Weave day captures if present. Respect work [WORK] vs personal split.
+5. Update NEW ME rules: add/demote/deactivate by id. Do not stack duplicate tomorrow tasks.
+6. Cite full task UUIDs you reference. Never blame. Linear, specific language only.
 
 Constraints:
 - Return ONLY valid JSON. No prose around it. No markdown fences.
@@ -58,15 +65,39 @@ Constraints:
 }`;
 
 export function buildCursorContextMarkdown(bundle: ContextBundle): string {
-  const { plans, tasks, journal, rules, goals, runs, deadlines, workContext, templates } =
-    bundle;
+  const {
+    plans,
+    tasks,
+    journal,
+    rules,
+    goals,
+    runs,
+    deadlines,
+    deadlineHistory,
+    workContext,
+    templates,
+    captures,
+  } = bundle;
 
   const lines: string[] = [];
   lines.push(`# LIVE DATA · generated ${new Date().toISOString()}`);
   lines.push(
-    `Plans in window: ${plans.length} · Tasks: ${tasks.length} · Journal entries: ${journal.length} · Prior runs: ${runs.length} · Active deadlines: ${deadlines.length}`,
+    `Plans in window: ${plans.length} · Tasks: ${tasks.length} · Journal entries: ${journal.length} · Prior runs: ${runs.length} · Active deadlines: ${deadlines.length} · Day captures: ${captures?.length ?? 0}`,
   );
   lines.push("");
+
+  lines.push(...buildExecutionSummaryBlock(tasks, plans, goals));
+  lines.push(...buildRecurringMissesBlock(tasks, goals));
+
+  if ((captures ?? []).length > 0) {
+    lines.push("## Day captures · raw notes for tonight (cleared after analysis applies)");
+    for (const c of captures!) {
+      lines.push(
+        `- (id:${c.id}) ${c.created_at.slice(0, 16).replace("T", " ")} — ${c.content}`,
+      );
+    }
+    lines.push("");
+  }
 
   if (workContext) {
     lines.push("## Work context · Verizon (keep work tasks separate from personal standards)");
@@ -113,6 +144,21 @@ export function buildCursorContextMarkdown(bundle: ContextBundle): string {
   }
   lines.push("");
 
+  const history = deadlineHistory ?? [];
+  if (history.length > 0) {
+    lines.push("## Deadline history · completed / paused (context only — do not re-prioritize unless user reactivates)");
+    const goalById = new Map(goals.map((g) => [g.id, g] as const));
+    for (const d of history) {
+      const pillar = d.macro_goal_id
+        ? (goalById.get(d.macro_goal_id)?.slug ?? "—")
+        : "—";
+      lines.push(
+        `- (id:${d.id}) **${d.title}** · ${d.status} · target ${d.target_date} · pillar ${pillar}${d.completed_at ? ` · completed ${d.completed_at.slice(0, 10)}` : ""}`,
+      );
+    }
+    lines.push("");
+  }
+
   lines.push("## Macro goals (valid macro_goal_slug values for tomorrow_tasks)");
   for (const g of goals) {
     const dl = g.deadline ? ` · deadline ${g.deadline}` : "";
@@ -127,29 +173,7 @@ export function buildCursorContextMarkdown(bundle: ContextBundle): string {
   }
   lines.push("");
 
-  const done = tasks.filter((t) => t.status === "done").length;
-  const missed = tasks.filter((t) => t.status === "missed").length;
-  const pending = tasks.filter((t) => t.status === "pending").length;
-  lines.push(`## Task execution · last 7 days (${done} done / ${missed} missed / ${pending} pending)`);
-
-  const planById = new Map(plans.map((p) => [p.id, p] as const));
-  const tasksByPlanDate = new Map<string, Task[]>();
-  for (const t of tasks) {
-    const p = planById.get(t.daily_plan_id);
-    const key = p?.plan_date ?? "unknown";
-    if (!tasksByPlanDate.has(key)) tasksByPlanDate.set(key, []);
-    tasksByPlanDate.get(key)!.push(t);
-  }
-  const goalById = new Map(goals.map((g) => [g.id, g] as const));
-  const sortedDates = Array.from(tasksByPlanDate.keys()).sort();
-  for (const d of sortedDates) {
-    lines.push(`### ${d}`);
-    for (const t of tasksByPlanDate.get(d)!) {
-      const slug = t.macro_goal_id ? (goalById.get(t.macro_goal_id)?.slug ?? "—") : "—";
-      lines.push(`- [${t.status}] (${slug})${(t.category ?? "personal") === "work" ? " [WORK]" : ""} (id:${t.id}) ${t.task_name}${t.source === "cursor" ? " · via cursor" : t.source === "standard" ? " · standard" : ""}`);
-    }
-    lines.push("");
-  }
+  lines.push(...buildTaskExecutionBlock(tasks, plans, goals));
 
   lines.push("## Pointed journal · last 7 days (immutable raw logs)");
   if (journal.length === 0) lines.push("- (no entries — ask user if they skipped Fix-Not-Fixate)");
@@ -191,7 +215,11 @@ export function buildCursorFullPayload(
     ? `${CURSOR_ANALYST_PROMPT}\n\nProvider note: ${providerNote}`
     : CURSOR_ANALYST_PROMPT;
   return [
-    PLUSULTRA_APP_BRIEFING,
+    ATTACK_MODE_ANALYST_FRAMEWORK,
+    "",
+    "---",
+    "",
+    PLUSULTRA_APP_OPS,
     "",
     "---",
     "",
@@ -201,4 +229,34 @@ export function buildCursorFullPayload(
     "",
     live,
   ].join("\n");
+}
+
+export interface ContextSummary {
+  plans: number;
+  tasks: number;
+  journal: number;
+  rules: number;
+  goals: number;
+  runs: number;
+  deadlines: number;
+  deadlineHistory: number;
+  captures: number;
+  templates: number;
+  hasWorkContext: boolean;
+}
+
+export function buildContextSummary(bundle: ContextBundle): ContextSummary {
+  return {
+    plans: bundle.plans.length,
+    tasks: bundle.tasks.length,
+    journal: bundle.journal.length,
+    rules: bundle.rules.length,
+    goals: bundle.goals.length,
+    runs: bundle.runs.length,
+    deadlines: bundle.deadlines.length,
+    deadlineHistory: bundle.deadlineHistory?.length ?? 0,
+    captures: bundle.captures?.length ?? 0,
+    templates: (bundle.templates ?? []).filter((t) => t.is_active).length,
+    hasWorkContext: !!bundle.workContext?.trim(),
+  };
 }

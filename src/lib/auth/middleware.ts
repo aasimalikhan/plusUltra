@@ -24,6 +24,7 @@ export async function updateAuthSession(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const isPublic =
     pathname === "/login" ||
+    pathname.startsWith("/api/cron") ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
     pathname.startsWith("/manifest") ||
