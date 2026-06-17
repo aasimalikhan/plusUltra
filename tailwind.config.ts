@@ -46,6 +46,15 @@ const config: Config = {
       boxShadow: {
         card: "0 1px 0 hsl(0 0% 100% / 0.04) inset, 0 8px 24px -8px hsl(0 0% 0% / 0.5)",
       },
+      keyframes: {
+        "pulse-subtle": {
+          "0%, 100%": { opacity: "1" },
+          "50%": { opacity: "0.85" },
+        },
+      },
+      animation: {
+        "pulse-subtle": "pulse-subtle 3s ease-in-out infinite",
+      },
     },
   },
   plugins: [],

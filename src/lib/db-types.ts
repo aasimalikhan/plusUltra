@@ -137,6 +137,20 @@ export interface DayCapture {
   created_at: string;
 }
 
+export type FocusSessionStatus = "completed" | "ended_early";
+
+export interface FocusSession {
+  id: string;
+  user_id: string;
+  intention: string;
+  planned_duration_seconds: number;
+  focused_seconds: number;
+  status: FocusSessionStatus;
+  started_at: string;
+  ended_at: string;
+  created_at: string;
+}
+
 export interface CursorPlan {
   summary: string;
   cited_journal_ids?: string[];

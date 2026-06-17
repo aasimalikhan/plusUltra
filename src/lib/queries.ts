@@ -16,6 +16,7 @@ import type {
   DeadlineGoalWithMilestones,
   TaskTemplate,
   DayCapture,
+  FocusSession,
 } from "@/lib/db-types";
 
 export async function fetchActiveRules(): Promise<Rule[]> {
@@ -250,6 +251,23 @@ export async function fetchDayCapturesForUser(
     throw new Error(error.message);
   }
   return (data ?? []) as DayCapture[];
+}
+
+export async function fetchFocusSessions(limit = 50): Promise<FocusSession[]> {
+  const { supabase, userId } = await getServerDb();
+  const { data, error } = await supabase
+    .from("focus_sessions")
+    .select("*")
+    .eq("user_id", userId)
+    .order("started_at", { ascending: false })
+    .limit(limit);
+  if (error) {
+    if (/focus_sessions|schema cache|does not exist/i.test(error.message)) {
+      return [];
+    }
+    throw new Error(error.message);
+  }
+  return (data ?? []) as FocusSession[];
 }
 
 export async function fetchTomorrowTaskCount(): Promise<number> {
