@@ -7,11 +7,10 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 /**
- * Midnight nightly job: lock today → Gemini analysis → apply tomorrow's plan → clear captures.
- * Vercel Cron hits this route. Protect with CRON_SECRET header.
+ * Midnight IST cron (00:00 Asia/Kolkata): lock yesterday → Gemini → apply today's plan
+ * → roll standard templates → clear captures.
  *
- * Set PLUSULTRA_TIMEZONE to your IANA timezone and adjust vercel.json cron UTC hour
- * so it fires at local midnight (default cron: 05:00 UTC ≈ midnight US Eastern).
+ * vercel.json "30 18 * * *" = 18:30 UTC = 00:00 IST (UTC+5:30).
  */
 export async function GET(request: Request) {
   const cronSecret = getCronSecret();
@@ -69,6 +68,7 @@ export async function GET(request: Request) {
     const result = await runNightlyAnalysisForUser(supabase, user.id, {
       skipIfAlreadyRun: true,
       forceLock: true,
+      midnightBoundary: true,
     });
 
     if (!result.ok) {

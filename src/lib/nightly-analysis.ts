@@ -16,7 +16,12 @@ import {
   fetchRecentContextForUser,
   hasAnalysisRunOnDate,
 } from "@/lib/queries";
-import { formatDateISOInTz, tomorrowDateISOInTz } from "@/lib/timezone";
+import {
+  formatDateISOInTz,
+  tomorrowDateISOInTz,
+  yesterdayDateISOInTz,
+} from "@/lib/timezone";
+import { ensureStandardTasksForPlan } from "@/lib/standard-tasks";
 import type { CursorPlan } from "@/lib/db-types";
 
 export type NightlyAnalysisResult =
@@ -41,25 +46,25 @@ async function loadAllowedSlugs(
   return new Set((goals ?? []).map((g) => g.slug as string));
 }
 
-/** Force-lock today's plan and mark pending tasks as missed (for midnight cron). */
-export async function forceLockTodayForUser(
+/** Lock a calendar day's plan and mark pending tasks as missed. */
+export async function forceLockPlanForDate(
   supabase: SupabaseClient,
   userId: string,
+  planDate: string,
 ): Promise<number> {
-  const today = formatDateISOInTz();
-  const { data: todayPlan } = await supabase
+  const { data: plan } = await supabase
     .from("daily_plans")
     .select("id, is_locked")
     .eq("user_id", userId)
-    .eq("plan_date", today)
+    .eq("plan_date", planDate)
     .maybeSingle();
 
-  if (!todayPlan || todayPlan.is_locked) return 0;
+  if (!plan || plan.is_locked) return 0;
 
   const { data: missed } = await supabase
     .from("tasks")
     .update({ status: "missed" })
-    .eq("daily_plan_id", todayPlan.id)
+    .eq("daily_plan_id", plan.id)
     .eq("user_id", userId)
     .eq("status", "pending")
     .select("id");
@@ -67,10 +72,18 @@ export async function forceLockTodayForUser(
   await supabase
     .from("daily_plans")
     .update({ is_locked: true })
-    .eq("id", todayPlan.id)
+    .eq("id", plan.id)
     .eq("user_id", userId);
 
   return missed?.length ?? 0;
+}
+
+/** Force-lock today's plan and mark pending tasks as missed. */
+export async function forceLockTodayForUser(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<number> {
+  return forceLockPlanForDate(supabase, userId, formatDateISOInTz());
 }
 
 export async function clearDayCapturesForUser(
@@ -88,8 +101,10 @@ export async function applyPlanForUser(
     rawOutputText: string;
     provider: "cursor" | "gemini" | "chatgpt";
     runDate?: string;
+    /** Defaults to tomorrow in IST; midnight cron passes today. */
+    targetPlanDate?: string;
   },
-): Promise<{ ok: true; runId: string; tasksCreated: number } | { ok: false; error: string }> {
+): Promise<{ ok: true; runId: string; tasksCreated: number; planId: string } | { ok: false; error: string }> {
   let parsed: unknown;
   try {
     parsed = JSON.parse(opts.rawOutputText);
@@ -102,13 +117,13 @@ export async function applyPlanForUser(
   if (!v.ok) return { ok: false, error: v.error };
   const plan = v.plan;
 
-  const tomorrowISO = tomorrowDateISOInTz();
+  const planDate = opts.targetPlanDate ?? tomorrowDateISOInTz();
   const runDate = opts.runDate ?? formatDateISOInTz();
 
   const { data: planRow, error: planErr } = await supabase
     .from("daily_plans")
     .upsert(
-      { user_id: userId, plan_date: tomorrowISO },
+      { user_id: userId, plan_date: planDate },
       { onConflict: "user_id,plan_date" },
     )
     .select("id")
@@ -199,7 +214,7 @@ export async function applyPlanForUser(
 
   await clearDayCapturesForUser(supabase, userId);
 
-  return { ok: true, runId: run!.id, tasksCreated };
+  return { ok: true, runId: run!.id, tasksCreated, planId: planRow.id };
 }
 
 export async function generateGeminiPlanForUser(
@@ -261,9 +276,18 @@ export async function generateGeminiPlanForUser(
 export async function runNightlyAnalysisForUser(
   supabase: SupabaseClient,
   userId: string,
-  opts?: { skipIfAlreadyRun?: boolean; forceLock?: boolean },
+  opts?: {
+    skipIfAlreadyRun?: boolean;
+    forceLock?: boolean;
+    /**
+     * Midnight IST cron (00:00): lock yesterday, apply AI + standard tasks to today.
+     * Manual / evening runs use tomorrow as the target plan date.
+     */
+    midnightBoundary?: boolean;
+  },
 ): Promise<NightlyAnalysisResult> {
-  const runDate = formatDateISOInTz();
+  const todayISO = formatDateISOInTz();
+  const runDate = todayISO;
 
   if (opts?.skipIfAlreadyRun !== false) {
     const already = await hasAnalysisRunOnDate(supabase, userId, runDate);
@@ -272,7 +296,11 @@ export async function runNightlyAnalysisForUser(
     }
   }
 
-  if (opts?.forceLock !== false) {
+  const midnight = opts?.midnightBoundary === true;
+
+  if (midnight) {
+    await forceLockPlanForDate(supabase, userId, yesterdayDateISOInTz());
+  } else if (opts?.forceLock !== false) {
     await forceLockTodayForUser(supabase, userId);
   }
 
@@ -284,8 +312,13 @@ export async function runNightlyAnalysisForUser(
     rawOutputText: generated.rawOutputText,
     provider: "gemini",
     runDate,
+    targetPlanDate: midnight ? todayISO : undefined,
   });
   if (!applied.ok) return { ok: false, error: applied.error };
+
+  if (midnight) {
+    await ensureStandardTasksForPlan(supabase, userId, applied.planId);
+  }
 
   return {
     ok: true,

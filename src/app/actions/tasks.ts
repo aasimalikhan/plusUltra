@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { getServerDb } from "@/lib/db";
-import { formatDateISO, isEvening } from "@/lib/utils";
+import { formatDateISOInTz } from "@/lib/timezone";
+import { isEvening } from "@/lib/utils";
 import type { TaskCategory, TaskStatus, WorkClient } from "@/lib/db-types";
 
 export async function setTaskStatus(taskId: string, status: TaskStatus) {
@@ -26,7 +27,7 @@ export async function addTaskToToday(formData: FormData) {
   const categoryRaw = String(formData.get("category") ?? "personal");
   if (!task_name) return;
 
-  const planDate = formatDateISO();
+  const planDate = formatDateISOInTz();
   const { data: plan, error: planErr } = await supabase
     .from("daily_plans")
     .upsert(
@@ -159,7 +160,7 @@ async function lockPlanAndMissPending(
 /** Flip pending → missed on any past unlocked day, then today after 11pm. */
 export async function autoMarkOverdueAsMissed() {
   const { supabase, userId } = await getServerDb();
-  const today = formatDateISO();
+  const today = formatDateISOInTz();
   const evening = isEvening();
   const allMissed: { id: string; task_name: string; macro_goal_id: string | null }[] = [];
 

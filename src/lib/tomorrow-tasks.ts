@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { tomorrowDateISO } from "@/lib/utils";
+import { tomorrowDateISOInTz } from "@/lib/timezone";
 
 /** Insert a repair action as tomorrow's task if not already present. */
 export async function ensureTomorrowRepairTask(
@@ -13,7 +13,7 @@ export async function ensureTomorrowRepairTask(
   const name = opts.task_name.trim();
   if (!name) return false;
 
-  const tomorrowISO = tomorrowDateISO();
+  const tomorrowISO = tomorrowDateISOInTz();
 
   const { data: plan, error: planErr } = await supabase
     .from("daily_plans")

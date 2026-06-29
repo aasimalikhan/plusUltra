@@ -33,9 +33,11 @@ export function getCronSecret(): string | undefined {
   return secret || undefined;
 }
 
-/** IANA timezone for date boundaries (midnight lock, analysis run_date). */
+/** Fixed IANA timezone — all calendar boundaries and midnight cron use IST. */
+export const APP_TIMEZONE = "Asia/Kolkata";
+
 export function getAppTimezone(): string {
-  return process.env.PLUSULTRA_TIMEZONE?.trim() || "America/New_York";
+  return APP_TIMEZONE;
 }
 
 /**

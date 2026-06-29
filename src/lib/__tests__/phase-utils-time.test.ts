@@ -14,14 +14,14 @@ describe("Phase 2 · time & day lock helpers", () => {
     expect(EVENING_DEBRIEF_HOUR).toBe(23);
   });
 
-  it("isDebriefTime true at 6pm local", () => {
-    const d = new Date("2026-06-08T18:00:00");
+  it("isDebriefTime true at 6pm IST", () => {
+    const d = new Date("2026-06-08T12:30:00.000Z");
     expect(isDebriefTime(d)).toBe(true);
     expect(isEvening(d)).toBe(false);
   });
 
-  it("isEvening true at 11pm local", () => {
-    const d = new Date("2026-06-08T23:00:00");
+  it("isEvening true at 11pm IST", () => {
+    const d = new Date("2026-06-08T17:30:00.000Z");
     expect(isEvening(d)).toBe(true);
     expect(isDebriefTime(d)).toBe(true);
   });

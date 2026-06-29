@@ -25,6 +25,14 @@ export function tomorrowDateISOInTz(d: Date = new Date(), timeZone?: string): st
   return formatDateISOInTz(noon, tz);
 }
 
+export function yesterdayDateISOInTz(d: Date = new Date(), timeZone?: string): string {
+  const tz = timeZone ?? getAppTimezone();
+  const today = formatDateISOInTz(d, tz);
+  const noon = new Date(`${today}T12:00:00`);
+  noon.setDate(noon.getDate() - 1);
+  return formatDateISOInTz(noon, tz);
+}
+
 /** Parse Postgres TIME ("18:00" / "18:00:00") to minutes since midnight. */
 export function parseTimeToMinutes(value: string): number {
   const [h, m] = value.split(":").map((part) => parseInt(part, 10));
