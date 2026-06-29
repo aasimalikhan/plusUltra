@@ -2,6 +2,7 @@ import { requireUser } from "@/lib/auth/user";
 import { ensureUserSeeded } from "@/lib/seed";
 import {
   fetchActiveRules,
+  fetchDailyWorkCutoff,
   fetchDeadlineGoals,
   fetchMacroGoals,
   fetchMissedTasksNeedingJournal,
@@ -16,6 +17,7 @@ import {
 } from "@/lib/queries";
 import { autoMarkOverdueAsMissed } from "@/app/actions/tasks";
 import { isDebriefTime, isEvening } from "@/lib/utils";
+import { isPastWorkCutoff } from "@/lib/timezone";
 import { getServerDb } from "@/lib/db";
 import { ensureTodayStandardTasks } from "@/lib/standard-tasks";
 import { isPersonalTask, isWorkCandidate, isWorkTask } from "@/lib/task-utils";
@@ -27,6 +29,7 @@ import { MacroGoalSection } from "@/components/MacroGoalSection";
 import { SuccessRateBadge } from "@/components/SuccessRateBadge";
 import { TodayExecutionBadge } from "@/components/TodayExecutionBadge";
 import { WorkSection } from "@/components/WorkSection";
+import { ViaNegativaSection } from "@/components/ViaNegativaSection";
 import { EveningDebrief } from "@/components/EveningDebrief";
 import { AdHocJournalButton } from "@/components/AdHocJournalButton";
 import { ResolveJournalRow } from "@/components/ResolveJournalRow";
@@ -47,7 +50,7 @@ export default async function TodayPage() {
   const evening = isEvening();
   const debriefTime = isDebriefTime();
 
-  const [rules, goals, plan, personalRate, workRate, deadlines, workContexts] =
+  const [rules, goals, plan, personalRate, workRate, deadlines, workContexts, dailyWorkCutoff] =
     await Promise.all([
       fetchActiveRules(),
       fetchMacroGoals(),
@@ -56,6 +59,7 @@ export default async function TodayPage() {
       fetchSuccessRate(14, "work"),
       fetchDeadlineGoals("active"),
       fetchWorkContextBundle(),
+      fetchDailyWorkCutoff(),
     ]);
 
   const tasks = plan ? await fetchTasksForPlan(plan.id) : [];
@@ -63,9 +67,11 @@ export default async function TodayPage() {
   const richGoal = goals.find((g) => g.slug === "RICH");
 
   const workTasks = tasks.filter(isWorkTask);
+  const antiTasks = tasks.filter((t) => t.is_anti_task && isPersonalTask(t));
   const untaggedCandidates = tasks.filter((t) =>
     isWorkCandidate(t, richGoal?.id),
   );
+  const workLocked = isPastWorkCutoff(dailyWorkCutoff);
 
   const [personalExec, workExec, missedNeedingJournal, analysisRunToday, tomorrowCount] =
     plan
@@ -88,6 +94,7 @@ export default async function TodayPage() {
   for (const g of goals) tasksByGoal.set(g.id, []);
   for (const t of tasks) {
     if (!isPersonalTask(t)) continue;
+    if (t.is_anti_task) continue;
     if (t.macro_goal_id && tasksByGoal.has(t.macro_goal_id)) {
       tasksByGoal.get(t.macro_goal_id)!.push(t);
     }
@@ -166,9 +173,12 @@ export default async function TodayPage() {
         richGoal={richGoal}
         untaggedCandidates={untaggedCandidates}
         workContexts={workContexts}
+        workLocked={workLocked}
       />
 
       <RulesBanner rules={rules} />
+
+      <ViaNegativaSection tasks={antiTasks} goals={goals} />
 
       <DeadlineStrip deadlines={deadlines} />
 

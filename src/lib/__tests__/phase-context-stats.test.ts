@@ -31,6 +31,8 @@ describe("context-stats", () => {
           status: "missed",
           completed_at: null,
           source: "standard",
+          is_anti_task: false,
+          friction_level: 1,
           created_at: "",
         },
         {
@@ -43,6 +45,8 @@ describe("context-stats", () => {
           completed_at: null,
           source: "manual",
           category: "work",
+          is_anti_task: false,
+          friction_level: 1,
           created_at: "",
         },
       ],
@@ -64,6 +68,8 @@ describe("context-stats", () => {
       status: "missed" as const,
       completed_at: null,
       source: "standard" as const,
+      is_anti_task: false,
+      friction_level: 1 as const,
       created_at: "",
     });
     const lines = buildRecurringMissesBlock(
@@ -91,6 +97,8 @@ describe("context-stats", () => {
       status,
       completed_at: null,
       source: "standard" as const,
+      is_anti_task: false,
+      friction_level: 1 as const,
       created_at: "",
     });
     const lines = buildTaskExecutionBlock(

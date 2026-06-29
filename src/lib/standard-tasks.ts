@@ -1,6 +1,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { formatDateISO } from "@/lib/utils";
+import { getAppTimezone } from "@/lib/analysis-env";
 import type { TaskCategory, TaskTemplate } from "@/lib/db-types";
+
+export const PATTERN_BREAK_TASKS = [
+  "Consume content completely outside interest area",
+  "Sit in silence for 15 minutes",
+  "Work from a new environment",
+  "Take a walk with no phone or podcast",
+  "Write by hand instead of typing for 20 minutes",
+] as const;
 
 export const DEFAULT_STANDARD_TASKS: Array<{
   task_name: string;
@@ -16,6 +25,26 @@ export const DEFAULT_STANDARD_TASKS: Array<{
   { task_name: "Pointed Journaling", slug: "INTELLIGENT", category: "personal", sort_order: 5 },
   { task_name: "Read Book", slug: "INTELLIGENT", category: "personal", sort_order: 6 },
 ];
+
+function isWeekendInAppTz(d: Date = new Date()): boolean {
+  const tz = getAppTimezone();
+  const weekday = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    weekday: "short",
+  }).format(d);
+  return weekday === "Sat" || weekday === "Sun";
+}
+
+function pickPatternBreakTask(): string {
+  const idx = Math.floor(Math.random() * PATTERN_BREAK_TASKS.length);
+  return PATTERN_BREAK_TASKS[idx] ?? PATTERN_BREAK_TASKS[0];
+}
+
+function hasPatternBreakToday(existingNames: Set<string>): boolean {
+  return PATTERN_BREAK_TASKS.some((p) =>
+    existingNames.has(p.trim().toLowerCase()),
+  );
+}
 
 /** Seed default templates if user has none. */
 export async function ensureDefaultTaskTemplates(
@@ -83,7 +112,29 @@ export async function ensureStandardTasksForPlan(
       task_name: t.task_name,
       category: t.category,
       source: "standard" as const,
+      is_anti_task: t.is_anti_task ?? false,
+      friction_level: t.friction_level ?? 1,
     }));
+
+  if (isWeekendInAppTz() && !hasPatternBreakToday(existingNames)) {
+    const { data: goals } = await supabase
+      .from("macro_goals")
+      .select("id, slug")
+      .eq("user_id", userId);
+    const intelligentId =
+      (goals ?? []).find((g) => g.slug === "INTELLIGENT")?.id ?? null;
+    const patternName = pickPatternBreakTask();
+    toInsert.push({
+      user_id: userId,
+      daily_plan_id: planId,
+      macro_goal_id: intelligentId,
+      task_name: patternName,
+      category: "personal",
+      source: "standard",
+      is_anti_task: false,
+      friction_level: 2,
+    });
+  }
 
   if (toInsert.length === 0) return 0;
 

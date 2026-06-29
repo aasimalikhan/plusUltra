@@ -55,6 +55,21 @@ need **direct daily work**, not side quests.
 Keep separate in tomorrow_tasks via category + work_client. Do not let work crowd out
 INTELLIGENT/MUSCULAR blocks unless journal shows a specific fire. Apply one-in-one-out per lane.
 
+## Via Negativa (anti-tasks)
+
+Some tomorrow tasks are **subtractive** — habits to NOT do (is_anti_task: true). Examples:
+"Do not open social media before noon", "Do not skip the gym excuse loop", "Do not eat after 9pm".
+Anti-tasks still map to a macro_goal_slug (the identity they protect). They count toward the daily
+task budget. On /today, checking an anti-task means the user **failed** the habit — not success.
+
+## Friction levels (Eat the Frog)
+
+Every tomorrow_tasks entry needs friction_level 1–3:
+- **1** — low friction (admin, easy wins, light reading)
+- **2** — moderate (routine focus, standard training)
+- **3** — high friction Frog (hard technical work, heavy lifts, creative deep work)
+**Hard cap: max TWO level-3 tasks per day.** Demote extras to level 2 or drop them.
+
 ## Nightly analyst constraints
 
 - **One apply per day** — do not stack duplicate tomorrow tasks; prefer one task per repair type.
@@ -77,7 +92,7 @@ export const PLUSULTRA_APP_OPS = `# plusUltra operations (reference)
 | Entity | Meaning |
 |--------|---------|
 | daily_plans | One row per calendar day; is_locked after 11pm local |
-| tasks | pending / done / missed · source: manual / cursor / standard · category: personal / work |
+| tasks | pending / done / missed · source: manual / cursor / standard · category: personal / work · is_anti_task · friction_level 1–3 |
 | pointed_journal | Immutable CBT log — never overwrite |
 | rules | NEW ME codes · priority asc · is_active |
 | deadline_goals | V.IMP targets + milestones + implementation_notes |
@@ -115,6 +130,11 @@ Read the Execution summary and compute a task budget for tomorrow:
 Standard templates auto-roll separately and do NOT count against this budget.
 **Never add more tasks as a fix for missing tasks.** Fewer focused tasks = higher execution rate.
 
+**Via Negativa when struggling:** If execution rate is **< 50 %**, prioritize **1–2** is_anti_task: true
+tasks (subtractive productivity — habits to NOT do) **instead of** stacking heavy active tasks.
+Frame as negative constraints ("Do not X before Y"). Anti-tasks count toward the budget above.
+Do not add both many anti-tasks AND a fat active list — subtract before you add.
+
 ### Phase 2 · Day capture analysis (understand what the human processed today)
 Read every day_capture entry carefully. Captures are raw notes, reels, articles, or ideas captured
 during the day — they are the human's in-the-moment signal about what mattered.
@@ -139,13 +159,20 @@ For CRITICAL deadlines: assign at least one direct milestone-progress task — n
 Do NOT assign tangential tasks when a CRITICAL deadline is pending (one-in-one-out: remove a lower
 priority task to make room).
 
-### Phase 4 · Recurring miss analysis → system mutation
+### Phase 4 · Recurring miss analysis → system mutation + friction assignment
 For each recurring miss (same task name missed 2+ times in window):
 a) Diagnose the structural reason: too vague? too large? wrong time of day? wrong energy state?
    adjacent habit not established yet?
 b) Write a SMALLER, more bounded replacement (e.g. "gym" → "10-min morning stretch + shower walk")
    OR deactivate the NEW ME rule that is driving the unachievable standard.
 c) Do NOT simply re-add the exact same task that has been missed 3+ times.
+
+**Assign friction_level (1, 2, or 3) to EVERY tomorrow_tasks entry before finalizing:**
+- **3** — hard technical work, heavy training, high-cognitive creative blocks (Frog tasks)
+- **2** — moderate focus, routine execution, breaking entrenched habits (typical anti-tasks)
+- **1** — admin, light wins, low activation energy
+**Strict cap: at most TWO tasks with friction_level: 3 per day.** If you have more Frogs,
+demote the least critical to level 2 or defer to a later day. Sort mentally: hardest first.
 
 ### Phase 5 · Work / personal balance
 Verizon (employer) work is a separate domain from personal growth pillars (RICH, MUSCULAR, INTELLIGENT).
@@ -180,7 +207,9 @@ Constraints:
       "macro_goal_slug": string,
       "task_name": string,
       "category"?: "personal" | "work",
-      "work_client"?: "verizon" | "freelance"
+      "work_client"?: "verizon" | "freelance",
+      "is_anti_task"?: boolean,
+      "friction_level"?: 1 | 2 | 3
     }
   ],
   "rule_changes": {
@@ -207,6 +236,8 @@ Your job:
 4. Weave day captures if present. Respect work [WORK] vs personal split.
 5. Update NEW ME rules: add/demote/deactivate by id. Do not stack duplicate tomorrow tasks.
 6. Cite full task UUIDs you reference. Never blame. Linear, specific language only.
+7. If execution rate < 50 %, include 1–2 is_anti_task: true Via Negativa tasks (habits to NOT do).
+8. Set friction_level 1–3 on every task; max TWO level-3 Frogs per day.
 
 Constraints:
 - Return ONLY valid JSON. No prose around it. No markdown fences.
@@ -215,7 +246,7 @@ Constraints:
   "summary": string,
   "cited_journal_ids": string[],
   "cited_task_ids": string[],
-  "tomorrow_tasks": [{ "macro_goal_slug": string, "task_name": string, "category"?: "personal" | "work", "work_client"?: "verizon" | "freelance" }],
+  "tomorrow_tasks": [{ "macro_goal_slug": string, "task_name": string, "category"?: "personal" | "work", "work_client"?: "verizon" | "freelance", "is_anti_task"?: boolean, "friction_level"?: 1 | 2 | 3 }],
   "rule_changes": {
     "add":        [{ "rule_text": string, "priority"?: number }],
     "demote":     [{ "id": string, "priority": number }],

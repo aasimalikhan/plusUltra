@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { logFocusSession } from "@/app/actions/focus";
-import type { FocusSession } from "@/lib/db-types";
+import type { FocusSession, FocusSessionType } from "@/lib/db-types";
 import { cn } from "@/lib/utils";
 
 const PRESETS = [15, 25, 45, 60] as const;
@@ -18,6 +18,14 @@ type StoredTimer = {
   status: TimerStatus;
   sessionStartedAt: number;
   endAt: number | null;
+  sessionType: FocusSessionType;
+};
+
+type SessionMeta = {
+  intention: string;
+  plannedDurationSeconds: number;
+  sessionStartedAt: number;
+  sessionType: FocusSessionType;
 };
 
 function formatTime(totalSeconds: number): string {
@@ -41,7 +49,10 @@ function loadStored(): StoredTimer | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as StoredTimer;
     if (!parsed.intention || parsed.durationSeconds <= 0) return null;
-    return parsed;
+    return {
+      ...parsed,
+      sessionType: parsed.sessionType === "void" ? "void" : "deep_work",
+    };
   } catch {
     return null;
   }
@@ -67,6 +78,7 @@ function writeStored(
     status: partial.status,
     sessionStartedAt: partial.sessionStartedAt,
     endAt: partial.endAt,
+    sessionType: partial.sessionType ?? "deep_work",
   });
 }
 
@@ -79,14 +91,30 @@ export function FocusTimerClient({ sessions }: { sessions: FocusSession[] }) {
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const [durationSeconds, setDurationSeconds] = useState(0);
   const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null);
+  const [sessionType, setSessionType] = useState<FocusSessionType>("deep_work");
   const [logError, setLogError] = useState<string | null>(null);
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [endedFocusedSeconds, setEndedFocusedSeconds] = useState(0);
   const [pending, startTransition] = useTransition();
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const endAtRef = useRef<number | null>(null);
+  const sessionMetaRef = useRef<SessionMeta>({
+    intention: "",
+    plannedDurationSeconds: 0,
+    sessionStartedAt: 0,
+    sessionType: "deep_work",
+  });
   const hydrated = useRef(false);
   const loggingRef = useRef(false);
+  const finishingRef = useRef(false);
+
+  const setSessionMeta = useCallback((meta: SessionMeta) => {
+    sessionMetaRef.current = meta;
+    setIntention(meta.intention);
+    setDurationSeconds(meta.plannedDurationSeconds);
+    setSessionStartedAt(meta.sessionStartedAt);
+    setSessionType(meta.sessionType);
+  }, []);
 
   const clearTick = useCallback(() => {
     if (tickRef.current) {
@@ -99,64 +127,62 @@ export function FocusTimerClient({ sessions }: { sessions: FocusSession[] }) {
     (
       nextStatus: "completed" | "ended_early",
       focusedSeconds: number,
-      meta: {
-        intention: string;
-        plannedDurationSeconds: number;
-        sessionStartedAt: number;
-      },
+      meta: SessionMeta,
     ) => {
       if (loggingRef.current) return;
       loggingRef.current = true;
       setLogError(null);
 
       startTransition(async () => {
-        const endedAt = new Date().toISOString();
-        const res = await logFocusSession({
-          intention: meta.intention,
-          plannedDurationSeconds: meta.plannedDurationSeconds,
-          focusedSeconds,
-          status: nextStatus,
-          startedAt: new Date(meta.sessionStartedAt).toISOString(),
-          endedAt,
-        });
-        loggingRef.current = false;
-        if (!res.ok) {
-          setLogError(res.error ?? "Failed to log session");
-          return;
+        try {
+          const endedAt = new Date().toISOString();
+          const res = await logFocusSession({
+            intention: meta.intention,
+            plannedDurationSeconds: meta.plannedDurationSeconds,
+            focusedSeconds,
+            status: nextStatus,
+            startedAt: new Date(meta.sessionStartedAt).toISOString(),
+            endedAt,
+            sessionType: meta.sessionType,
+          });
+          if (!res.ok) {
+            setLogError(res.error ?? "Failed to log session");
+            return;
+          }
+          router.refresh();
+        } finally {
+          loggingRef.current = false;
         }
-        router.refresh();
       });
     },
     [router],
   );
 
   const finishSession = useCallback(
-    (meta: {
-      intention: string;
-      plannedDurationSeconds: number;
-      sessionStartedAt: number;
-    }) => {
+    (meta: SessionMeta) => {
+      if (finishingRef.current) return;
+      if (meta.plannedDurationSeconds <= 0 || !meta.intention.trim()) return;
+
+      finishingRef.current = true;
       clearTick();
       endAtRef.current = null;
       saveStored(null);
+      setSessionMeta(meta);
+      setRemainingSeconds(0);
       setStatus("complete");
       recordSession("completed", meta.plannedDurationSeconds, meta);
     },
-    [clearTick, recordSession],
+    [clearTick, recordSession, setSessionMeta],
   );
 
   const syncRemaining = useCallback(() => {
-    if (endAtRef.current === null) return;
+    if (endAtRef.current === null || finishingRef.current) return;
     const left = Math.max(0, Math.ceil((endAtRef.current - Date.now()) / 1000));
     setRemainingSeconds(left);
     if (left <= 0) {
-      finishSession({
-        intention,
-        plannedDurationSeconds: durationSeconds,
-        sessionStartedAt: sessionStartedAt ?? Date.now(),
-      });
+      finishSession(sessionMetaRef.current);
     }
-  }, [finishSession, intention, durationSeconds, sessionStartedAt]);
+  }, [finishSession]);
 
   const startTick = useCallback(() => {
     clearTick();
@@ -170,21 +196,21 @@ export function FocusTimerClient({ sessions }: { sessions: FocusSession[] }) {
     const stored = loadStored();
     if (!stored) return;
 
-    setIntention(stored.intention);
-    setDurationSeconds(stored.durationSeconds);
+    const meta: SessionMeta = {
+      intention: stored.intention,
+      plannedDurationSeconds: stored.durationSeconds,
+      sessionStartedAt: stored.sessionStartedAt,
+      sessionType: stored.sessionType,
+    };
+    setSessionMeta(meta);
     setDurationMinutes(Math.round(stored.durationSeconds / 60));
-    setSessionStartedAt(stored.sessionStartedAt);
 
     if (stored.status === "running" && stored.endAt) {
       const left = Math.max(0, Math.ceil((stored.endAt - Date.now()) / 1000));
       setRemainingSeconds(left);
 
       if (left <= 0) {
-        finishSession({
-          intention: stored.intention,
-          plannedDurationSeconds: stored.durationSeconds,
-          sessionStartedAt: stored.sessionStartedAt,
-        });
+        finishSession(meta);
         return;
       }
 
@@ -195,7 +221,7 @@ export function FocusTimerClient({ sessions }: { sessions: FocusSession[] }) {
       setRemainingSeconds(stored.remainingSeconds);
       setStatus("paused");
     }
-  }, [startTick, finishSession]);
+  }, [startTick, finishSession, setSessionMeta]);
 
   useEffect(() => () => clearTick(), [clearTick]);
 
@@ -219,10 +245,18 @@ export function FocusTimerClient({ sessions }: { sessions: FocusSession[] }) {
     const total = effectiveMinutes * 60;
     const started = Date.now();
     const endAt = started + total * 1000;
+    const meta: SessionMeta = {
+      intention: trimmed,
+      plannedDurationSeconds: total,
+      sessionStartedAt: started,
+      sessionType,
+    };
 
-    setDurationSeconds(total);
+    finishingRef.current = false;
+    loggingRef.current = false;
+    setLogError(null);
+    setSessionMeta(meta);
     setRemainingSeconds(total);
-    setSessionStartedAt(started);
     endAtRef.current = endAt;
     setStatus("running");
     writeStored(
@@ -232,6 +266,7 @@ export function FocusTimerClient({ sessions }: { sessions: FocusSession[] }) {
         status: "running",
         sessionStartedAt: started,
         endAt,
+        sessionType,
       },
       total,
     );
@@ -243,14 +278,15 @@ export function FocusTimerClient({ sessions }: { sessions: FocusSession[] }) {
     endAtRef.current = null;
     setConfirmEnd(false);
     setStatus("paused");
-    if (sessionStartedAt) {
+    if (sessionMetaRef.current.sessionStartedAt) {
       writeStored(
         {
-          intention,
-          durationSeconds,
+          intention: sessionMetaRef.current.intention,
+          durationSeconds: sessionMetaRef.current.plannedDurationSeconds,
           status: "paused",
-          sessionStartedAt,
+          sessionStartedAt: sessionMetaRef.current.sessionStartedAt,
           endAt: null,
+          sessionType: sessionMetaRef.current.sessionType,
         },
         remainingSeconds,
       );
@@ -261,14 +297,15 @@ export function FocusTimerClient({ sessions }: { sessions: FocusSession[] }) {
     const endAt = Date.now() + remainingSeconds * 1000;
     endAtRef.current = endAt;
     setStatus("running");
-    if (sessionStartedAt) {
+    if (sessionMetaRef.current.sessionStartedAt) {
       writeStored(
         {
-          intention,
-          durationSeconds,
+          intention: sessionMetaRef.current.intention,
+          durationSeconds: sessionMetaRef.current.plannedDurationSeconds,
           status: "running",
-          sessionStartedAt,
+          sessionStartedAt: sessionMetaRef.current.sessionStartedAt,
           endAt,
+          sessionType: sessionMetaRef.current.sessionType,
         },
         remainingSeconds,
       );
@@ -285,23 +322,20 @@ export function FocusTimerClient({ sessions }: { sessions: FocusSession[] }) {
   }
 
   function endEarly() {
-    if (!sessionStartedAt) return;
+    const meta = sessionMetaRef.current;
+    if (!meta.sessionStartedAt) return;
 
-    const focused = Math.max(0, durationSeconds - remainingSeconds);
+    const focused = Math.max(0, meta.plannedDurationSeconds - remainingSeconds);
     clearTick();
     endAtRef.current = null;
     saveStored(null);
     setConfirmEnd(false);
     setEndedFocusedSeconds(focused);
     setStatus("ended");
-    setSessionStartedAt(null);
+    finishingRef.current = true;
 
     if (focused > 0) {
-      recordSession("ended_early", focused, {
-        intention,
-        plannedDurationSeconds: durationSeconds,
-        sessionStartedAt,
-      });
+      recordSession("ended_early", focused, meta);
     }
   }
 
@@ -309,13 +343,23 @@ export function FocusTimerClient({ sessions }: { sessions: FocusSession[] }) {
     clearTick();
     endAtRef.current = null;
     saveStored(null);
+    finishingRef.current = false;
+    loggingRef.current = false;
     setStatus("setup");
     setRemainingSeconds(0);
     setIntention("");
     setSessionStartedAt(null);
+    setDurationSeconds(0);
     setEndedFocusedSeconds(0);
     setConfirmEnd(false);
     setLogError(null);
+    sessionMetaRef.current = {
+      intention: "",
+      plannedDurationSeconds: 0,
+      sessionStartedAt: 0,
+      sessionType: "deep_work",
+    };
+    setSessionType("deep_work");
   }
 
   const progress =
@@ -330,7 +374,88 @@ export function FocusTimerClient({ sessions }: { sessions: FocusSession[] }) {
 
   return (
     <>
-      {inFocus && (
+      {inFocus && sessionType === "void" && (
+        <div
+          className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black"
+          role="dialog"
+          aria-label="Void mode session"
+        >
+          <div
+            className="h-3 w-3 rounded-full bg-white/70"
+            style={{
+              animation: "void-breathe 4s ease-in-out infinite",
+            }}
+          />
+          {confirmEnd ? (
+            <div className="absolute bottom-16 left-1/2 w-full max-w-xs -translate-x-1/2 space-y-4 px-6">
+              <p className="text-center text-sm text-white/60">
+                End void session
+                {focusedSoFar > 0
+                  ? ` and log ${formatDurationLabel(focusedSoFar)}?`
+                  : "?"}
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={cancelEnd}
+                  className="btn flex-1 border-white/20 bg-transparent text-white/70"
+                >
+                  Stay
+                </button>
+                <button
+                  type="button"
+                  onClick={endEarly}
+                  className="btn btn-primary flex-1"
+                >
+                  End
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="absolute bottom-10 flex gap-4">
+              {status === "running" ? (
+                <button
+                  type="button"
+                  onClick={pauseFocus}
+                  className="text-xs text-white/30 transition hover:text-white/60"
+                >
+                  Pause
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={resumeFocus}
+                  className="text-xs text-white/50 transition hover:text-white/80"
+                >
+                  Resume
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={requestEnd}
+                className="text-xs text-white/30 transition hover:text-white/60"
+              >
+                End
+              </button>
+            </div>
+          )}
+          <style jsx global>{`
+            @keyframes void-breathe {
+              0%,
+              100% {
+                transform: scale(1);
+                opacity: 0.35;
+              }
+              50% {
+                transform: scale(1.75);
+                opacity: 0.85;
+              }
+            }
+          `}</style>
+        </div>
+      )}
+
+      {inFocus && sessionType === "deep_work" && (
         <div
           className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-bg px-6"
           role="dialog"
@@ -444,8 +569,22 @@ export function FocusTimerClient({ sessions }: { sessions: FocusSession[] }) {
             <p className="mt-4 text-sm text-fg-muted">No time logged — session was too short.</p>
           )}
           <p className="mt-4 max-w-sm text-sm text-fg-muted">{intention}</p>
-          {logError && <p className="mt-3 text-xs text-red-400">{logError}</p>}
-          {pending && endedFocusedSeconds > 0 && (
+          {logError && (
+            <div className="mt-3 space-y-2">
+              <p className="text-xs text-red-400">{logError}</p>
+              <button
+                type="button"
+                onClick={() =>
+                  recordSession("ended_early", endedFocusedSeconds, sessionMetaRef.current)
+                }
+                disabled={pending}
+                className="btn text-xs"
+              >
+                Retry save
+              </button>
+            </div>
+          )}
+          {pending && !logError && endedFocusedSeconds > 0 && (
             <p className="mt-3 text-xs text-fg-subtle">Logging session…</p>
           )}
           <button
@@ -466,8 +605,26 @@ export function FocusTimerClient({ sessions }: { sessions: FocusSession[] }) {
             {formatTime(durationSeconds)}
           </p>
           <p className="mt-4 max-w-sm text-sm text-fg-muted">{intention}</p>
-          {logError && <p className="mt-3 text-xs text-red-400">{logError}</p>}
-          {pending && (
+          {logError && (
+            <div className="mt-3 space-y-2">
+              <p className="text-xs text-red-400">{logError}</p>
+              <button
+                type="button"
+                onClick={() =>
+                  recordSession(
+                    "completed",
+                    sessionMetaRef.current.plannedDurationSeconds,
+                    sessionMetaRef.current,
+                  )
+                }
+                disabled={pending}
+                className="btn text-xs"
+              >
+                Retry save
+              </button>
+            </div>
+          )}
+          {pending && !logError && (
             <p className="mt-3 text-xs text-fg-subtle">Logging session…</p>
           )}
           <button
@@ -484,11 +641,52 @@ export function FocusTimerClient({ sessions }: { sessions: FocusSession[] }) {
       {status === "setup" && (
         <section className="card space-y-6">
           <div className="flex flex-col items-center py-6">
-            <div className="flex h-32 w-32 items-center justify-center rounded-full border border-bg-border">
-              <span className="font-mono text-3xl font-light text-fg-muted">
-                {formatTime(effectiveMinutes * 60)}
-              </span>
+            {sessionType === "void" ? (
+              <div className="flex h-32 w-32 items-center justify-center rounded-full bg-black">
+                <div className="h-3 w-3 animate-pulse rounded-full bg-white/70" />
+              </div>
+            ) : (
+              <div className="flex h-32 w-32 items-center justify-center rounded-full border border-bg-border">
+                <span className="font-mono text-3xl font-light text-fg-muted">
+                  {formatTime(effectiveMinutes * 60)}
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <p className="label">Mode</p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setSessionType("deep_work")}
+                className={cn(
+                  "pill cursor-pointer transition-colors",
+                  sessionType === "deep_work"
+                    ? "border-fg bg-fg text-bg"
+                    : "hover:border-fg-muted/50 hover:text-fg",
+                )}
+              >
+                Deep Work
+              </button>
+              <button
+                type="button"
+                onClick={() => setSessionType("void")}
+                className={cn(
+                  "pill cursor-pointer transition-colors",
+                  sessionType === "void"
+                    ? "border-fg bg-black text-white"
+                    : "hover:border-fg-muted/50 hover:text-fg",
+                )}
+              >
+                Void Mode
+              </button>
             </div>
+            {sessionType === "void" && (
+              <p className="text-[10px] text-fg-subtle">
+                Pure black screen — no timer visible. Just breathe.
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -592,6 +790,11 @@ export function FocusTimerClient({ sessions }: { sessions: FocusSession[] }) {
                   >
                     {s.status === "completed" ? "Done" : "Ended early"}
                   </span>
+                  {(s.session_type ?? "deep_work") === "void" && (
+                    <span className="pill shrink-0 border-white/20 bg-black text-[10px] text-white/70">
+                      void
+                    </span>
+                  )}
                 </div>
                 <p className="mt-1.5 font-mono text-[10px] text-fg-subtle">
                   {formatDurationLabel(s.focused_seconds)} focused

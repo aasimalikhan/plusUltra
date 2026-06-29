@@ -362,10 +362,21 @@ export async function fetchWorkContextBundleForUser(
 ): Promise<WorkContextBundle> {
   const { data } = await supabase
     .from("profiles")
-    .select("work_context, work_context_verizon, work_context_freelance")
+    .select("work_context, work_context_verizon, work_context_freelance, daily_work_cutoff")
     .eq("id", userId)
     .maybeSingle();
   return parseWorkContexts(data);
+}
+
+/** Profile daily work cutoff (Postgres TIME, e.g. "18:00:00"). */
+export async function fetchDailyWorkCutoff(): Promise<string> {
+  const { supabase, userId } = await getServerDb();
+  const { data } = await supabase
+    .from("profiles")
+    .select("daily_work_cutoff")
+    .eq("id", userId)
+    .maybeSingle();
+  return data?.daily_work_cutoff ?? "18:00:00";
 }
 
 export async function fetchRecentContext(days = 7) {

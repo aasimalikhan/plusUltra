@@ -2,6 +2,9 @@ export type TaskStatus = "pending" | "done" | "missed";
 export type TaskSource = "manual" | "cursor" | "standard";
 export type TaskCategory = "personal" | "work";
 export type WorkClient = "verizon" | "freelance";
+/** 1 = easy, 2 = moderate, 3 = high friction (Frog). Max 2 level-3 per day from AI. */
+export type FrictionLevel = 1 | 2 | 3;
+export type FocusSessionType = "deep_work" | "void";
 export type AnalysisProvider = "cursor" | "gemini" | "chatgpt";
 /** Uppercase slug stored on macro_goals (built-in or custom). */
 export type MacroGoalSlug = string;
@@ -36,6 +39,8 @@ export interface Task {
   source: TaskSource;
   category?: TaskCategory;
   work_client?: WorkClient | null;
+  is_anti_task: boolean;
+  friction_level: FrictionLevel;
   created_at: string;
 }
 
@@ -46,6 +51,8 @@ export interface TaskTemplate {
   task_name: string;
   category: TaskCategory;
   work_client?: WorkClient | null;
+  is_anti_task: boolean;
+  friction_level: FrictionLevel;
   is_active: boolean;
   sort_order: number;
   created_at: string;
@@ -57,6 +64,8 @@ export interface UserProfile {
   work_context: string | null;
   work_context_verizon?: string | null;
   work_context_freelance?: string | null;
+  /** Local-time cutoff after which work tasks are visually locked on /today. */
+  daily_work_cutoff: string;
   created_at: string;
 }
 
@@ -146,6 +155,7 @@ export interface FocusSession {
   planned_duration_seconds: number;
   focused_seconds: number;
   status: FocusSessionStatus;
+  session_type: FocusSessionType;
   started_at: string;
   ended_at: string;
   created_at: string;
@@ -160,6 +170,10 @@ export interface CursorPlan {
     task_name: string;
     category?: TaskCategory;
     work_client?: WorkClient;
+    /** Via Negativa — habit to NOT do; checking = failure on /today */
+    is_anti_task?: boolean;
+    /** 1 = low, 2 = moderate, 3 = Frog (max 2 per day) */
+    friction_level?: FrictionLevel;
   }>;
   rule_changes?: {
     add?: Array<{ rule_text: string; priority?: number }>;

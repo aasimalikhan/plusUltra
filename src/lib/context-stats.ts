@@ -129,7 +129,10 @@ export function formatTaskLine(task: Task, goalById: Map<string, MacroGoal>): st
       : "";
   const tag = sourceTag(task);
   const name = cleanTaskName(task.task_name);
-  return `- [${task.status}] (${slug})${work} (id:${task.id}) ${name} · ${tag}`;
+  const anti = task.is_anti_task ? " anti" : "";
+  const friction =
+    (task.friction_level ?? 1) > 1 ? ` f${task.friction_level}` : "";
+  return `- [${task.status}] (${slug})${work}${anti}${friction} (id:${task.id}) ${name} · ${tag}`;
 }
 
 export function formatDayTaskSummary(

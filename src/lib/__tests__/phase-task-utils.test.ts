@@ -16,6 +16,8 @@ function task(partial: Partial<Task> & Pick<Task, "id" | "task_name">): Task {
     status: "pending",
     completed_at: null,
     source: "manual",
+    is_anti_task: false,
+    friction_level: 1,
     created_at: "",
     ...partial,
   };

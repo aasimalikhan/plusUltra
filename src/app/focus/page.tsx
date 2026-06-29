@@ -13,6 +13,7 @@ export default async function FocusPage() {
         <h1 className="h1 mt-1">Focus</h1>
         <p className="mt-2 text-sm text-fg-muted">
           Set your intention, start the clock, and work with zero distractions until the timer ends.
+          Switch to Void Mode for a pure black screen with a breathing dot — no visible countdown.
           Completed sessions are logged below.
         </p>
       </div>

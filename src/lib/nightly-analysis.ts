@@ -131,6 +131,9 @@ export async function applyPlanForUser(
         task_name: t.task_name.trim(),
         source: "cursor" as const,
         category,
+        is_anti_task: t.is_anti_task === true,
+        friction_level:
+          t.friction_level === 2 || t.friction_level === 3 ? t.friction_level : 1,
       };
       if (category === "work") {
         row.work_client =

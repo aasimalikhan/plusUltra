@@ -1,7 +1,16 @@
-import type { CursorPlan } from "@/lib/db-types";
+import type { CursorPlan, FrictionLevel } from "@/lib/db-types";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const FRICTION_LEVELS = new Set([1, 2, 3]);
+
+function parseFrictionLevel(value: unknown): FrictionLevel | null {
+  if (value === undefined || value === null) return 1;
+  const n = Number(value);
+  if (!Number.isInteger(n) || !FRICTION_LEVELS.has(n)) return null;
+  return n as FrictionLevel;
+}
 
 export function isUuid(value: string): boolean {
   return UUID_RE.test(value.trim());
@@ -54,6 +63,7 @@ export function validateCursorPlan(
     return { ok: false, error: "summary must be a string" };
   if (!Array.isArray(p.tomorrow_tasks))
     return { ok: false, error: "tomorrow_tasks must be an array" };
+  let frogCount = 0;
   for (const t of p.tomorrow_tasks) {
     if (!t || typeof t !== "object")
       return { ok: false, error: "tomorrow_tasks item not object" };
@@ -76,6 +86,26 @@ export function validateCursorPlan(
         };
       }
     }
+    if (
+      tt.is_anti_task !== undefined &&
+      typeof tt.is_anti_task !== "boolean"
+    ) {
+      return { ok: false, error: "is_anti_task must be a boolean when present" };
+    }
+    const friction = parseFrictionLevel(tt.friction_level);
+    if (friction === null) {
+      return {
+        ok: false,
+        error: "friction_level must be 1, 2, or 3 when present",
+      };
+    }
+    if (friction === 3) frogCount++;
+  }
+  if (frogCount > 2) {
+    return {
+      ok: false,
+      error: `at most 2 friction_level: 3 tasks allowed per day (found ${frogCount})`,
+    };
   }
 
   const citedJ = validateUuidList("cited_journal_ids", p.cited_journal_ids);
