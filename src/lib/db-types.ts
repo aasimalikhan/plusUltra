@@ -2,7 +2,7 @@ export type TaskStatus = "pending" | "done" | "missed";
 export type TaskSource = "manual" | "cursor" | "standard";
 export type TaskCategory = "personal" | "work";
 export type WorkClient = "verizon" | "freelance";
-/** 1 = easy, 2 = moderate, 3 = high friction (Frog). Max 2 level-3 per day from AI. */
+/** 1 = light, 2 = normal, 3 = hard — optional; sorts task list on /today */
 export type FrictionLevel = 1 | 2 | 3;
 export type FocusSessionType = "deep_work" | "void";
 export type AnalysisProvider = "cursor" | "gemini" | "chatgpt";
@@ -172,7 +172,7 @@ export interface CursorPlan {
     work_client?: WorkClient;
     /** Via Negativa — habit to NOT do; checking = failure on /today */
     is_anti_task?: boolean;
-    /** 1 = low, 2 = moderate, 3 = Frog (max 2 per day) */
+    /** 1 = light, 2 = normal, 3 = hard — optional sort hint */
     friction_level?: FrictionLevel;
   }>;
   rule_changes?: {

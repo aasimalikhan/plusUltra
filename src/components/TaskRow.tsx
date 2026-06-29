@@ -153,9 +153,9 @@ export function TaskRow({
       {task.source === "standard" && (
         <span className="pill">standard</span>
       )}
-      {(task.friction_level ?? 1) === 3 && (
-        <span className="pill border-orange-500/50 bg-orange-500/10 text-orange-200">
-          🔥 FROG
+      {(task.friction_level ?? 1) >= 3 && (
+        <span className="pill border-amber-500/40 text-[10px] text-amber-200/90">
+          hard
         </span>
       )}
 

@@ -33,11 +33,11 @@ export function getCronSecret(): string | undefined {
   return secret || undefined;
 }
 
-/** Fixed IANA timezone — all calendar boundaries and midnight cron use IST. */
-export const APP_TIMEZONE = "Asia/Kolkata";
+/** Default calendar timezone (IST). Override with PLUSULTRA_TIMEZONE in env. */
+export const APP_TIMEZONE_DEFAULT = "Asia/Kolkata";
 
 export function getAppTimezone(): string {
-  return APP_TIMEZONE;
+  return process.env.PLUSULTRA_TIMEZONE?.trim() || APP_TIMEZONE_DEFAULT;
 }
 
 /**

@@ -9,6 +9,7 @@ import {
 } from "@/lib/context-formatter";
 import { getAnalysisProvider } from "@/lib/analysis-providers";
 import { parseCursorPlanJson } from "@/lib/cursor-plan-validation";
+import { clearTodayAnalysisState } from "@/lib/analysis-reset";
 import { hasAnalysisRunToday } from "@/lib/queries";
 import {
   applyPlanForUser,
@@ -70,13 +71,7 @@ export async function generateAndApplyGeminiAnalysis(): Promise<{
   if (!result.ok) return { ok: false, error: result.error };
   if (result.skipped) return { ok: false, error: result.reason };
 
-  revalidatePath("/today");
-  revalidatePath("/rules");
-  revalidatePath("/history");
-  revalidatePath("/cursor");
-  revalidatePath("/deadlines");
-  revalidatePath("/captures");
-  revalidatePath("/insights");
+  revalidateAnalysisPaths();
 
   return {
     ok: true,
@@ -108,13 +103,7 @@ export async function applyCursorPlan(opts: {
   });
   if (!applied.ok) return applied;
 
-  revalidatePath("/today");
-  revalidatePath("/rules");
-  revalidatePath("/history");
-  revalidatePath("/cursor");
-  revalidatePath("/deadlines");
-  revalidatePath("/captures");
-  revalidatePath("/insights");
+  revalidateAnalysisPaths();
 
   return applied;
 }
@@ -135,7 +124,7 @@ export async function triggerNightlyAnalysisNow(): Promise<{
   const { supabase, userId } = await getServerDb();
   const result = await runNightlyAnalysisForUser(supabase, userId, {
     skipIfAlreadyRun: true,
-    forceLock: true,
+    midnightBoundary: true,
   });
 
   if (!result.ok) return { ok: false, error: result.error };
@@ -143,6 +132,57 @@ export async function triggerNightlyAnalysisNow(): Promise<{
     return { ok: true, skipped: true, reason: result.reason };
   }
 
+  revalidateAnalysisPaths();
+
+  return {
+    ok: true,
+    runId: result.runId,
+    tasksCreated: result.tasksCreated,
+  };
+}
+
+/**
+ * Dev / iteration: delete today's analysis run + cursor tasks, then rerun Gemini
+ * and apply fresh tasks to **today's** plan (IST calendar day).
+ */
+export async function resetTodayAnalysisAndRerun(): Promise<{
+  ok: boolean;
+  error?: string;
+  runId?: string;
+  tasksCreated?: number;
+  runsDeleted?: number;
+  cursorTasksDeleted?: number;
+}> {
+  if (!isGeminiConfigured()) {
+    return { ok: false, error: "GEMINI_API_KEY is not configured." };
+  }
+
+  const { supabase, userId } = await getServerDb();
+  const cleared = await clearTodayAnalysisState(supabase, userId);
+
+  const result = await runNightlyAnalysisForUser(supabase, userId, {
+    skipIfAlreadyRun: false,
+    forceLock: false,
+    applyToToday: true,
+  });
+
+  if (!result.ok) return { ok: false, error: result.error };
+  if (result.skipped) {
+    return { ok: false, error: result.reason ?? "Analysis was skipped after reset" };
+  }
+
+  revalidateAnalysisPaths();
+
+  return {
+    ok: true,
+    runId: result.runId,
+    tasksCreated: result.tasksCreated,
+    runsDeleted: cleared.runsDeleted,
+    cursorTasksDeleted: cleared.cursorTasksDeleted,
+  };
+}
+
+function revalidateAnalysisPaths() {
   revalidatePath("/today");
   revalidatePath("/rules");
   revalidatePath("/history");
@@ -150,12 +190,6 @@ export async function triggerNightlyAnalysisNow(): Promise<{
   revalidatePath("/deadlines");
   revalidatePath("/captures");
   revalidatePath("/insights");
-
-  return {
-    ok: true,
-    runId: result.runId,
-    tasksCreated: result.tasksCreated,
-  };
 }
 
 export async function previewAnalysisPayload(): Promise<string> {

@@ -62,13 +62,13 @@ Some tomorrow tasks are **subtractive** — habits to NOT do (is_anti_task: true
 Anti-tasks still map to a macro_goal_slug (the identity they protect). They count toward the daily
 task budget. On /today, checking an anti-task means the user **failed** the habit — not success.
 
-## Friction levels (Eat the Frog)
+## Task difficulty (optional sorting hint)
 
-Every tomorrow_tasks entry needs friction_level 1–3:
-- **1** — low friction (admin, easy wins, light reading)
-- **2** — moderate (routine focus, standard training)
-- **3** — high friction Frog (hard technical work, heavy lifts, creative deep work)
-**Hard cap: max TWO level-3 tasks per day.** Demote extras to level 2 or drop them.
+Optional friction_level 1–3 on tomorrow_tasks — used only to sort hard tasks first on /today:
+- **1** — light (admin, easy wins)
+- **2** — normal (default if omitted)
+- **3** — hard (deep technical work, heavy training)
+Omit on most tasks; mark only genuinely demanding blocks.
 
 ## Nightly analyst constraints
 
@@ -167,12 +167,8 @@ b) Write a SMALLER, more bounded replacement (e.g. "gym" → "10-min morning str
    OR deactivate the NEW ME rule that is driving the unachievable standard.
 c) Do NOT simply re-add the exact same task that has been missed 3+ times.
 
-**Assign friction_level (1, 2, or 3) to EVERY tomorrow_tasks entry before finalizing:**
-- **3** — hard technical work, heavy training, high-cognitive creative blocks (Frog tasks)
-- **2** — moderate focus, routine execution, breaking entrenched habits (typical anti-tasks)
-- **1** — admin, light wins, low activation energy
-**Strict cap: at most TWO tasks with friction_level: 3 per day.** If you have more Frogs,
-demote the least critical to level 2 or defer to a later day. Sort mentally: hardest first.
+**Optional difficulty:** Set friction_level 3 on at most a few genuinely hard tasks (deep work, heavy training).
+Most tasks can omit it (defaults to 1). Used only to sort today's list — hard items appear first.
 
 ### Phase 5 · Work / personal balance
 Verizon (employer) work is a separate domain from personal growth pillars (RICH, MUSCULAR, INTELLIGENT).
@@ -237,7 +233,7 @@ Your job:
 5. Update NEW ME rules: add/demote/deactivate by id. Do not stack duplicate tomorrow tasks.
 6. Cite full task UUIDs you reference. Never blame. Linear, specific language only.
 7. If execution rate < 50 %, include 1–2 is_anti_task: true Via Negativa tasks (habits to NOT do).
-8. Set friction_level 1–3 on every task; max TWO level-3 Frogs per day.
+8. Optionally set friction_level 3 on hard tasks (most tasks need no field).
 
 Constraints:
 - Return ONLY valid JSON. No prose around it. No markdown fences.

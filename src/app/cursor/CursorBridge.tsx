@@ -6,6 +6,7 @@ import {
   applyCursorPlan,
   generateAndApplyGeminiAnalysis,
   generateGeminiAnalysis,
+  resetTodayAnalysisAndRerun,
   triggerNightlyAnalysisNow,
 } from "@/app/actions/cursor";
 import { parseCursorPlanJson } from "@/lib/cursor-plan-validation";
@@ -19,6 +20,8 @@ interface Result {
   tasksCreated?: number;
   skipped?: boolean;
   reason?: string;
+  runsDeleted?: number;
+  cursorTasksDeleted?: number;
 }
 
 function tryParse(raw: string): { ok: true; plan: CursorPlan } | { ok: false; error: string } {
@@ -122,6 +125,21 @@ export function CursorBridge({
     });
   }
 
+  function runResetAndRerunToday() {
+    if (
+      !confirm(
+        "Delete today's analysis run and all AI (cursor) tasks on today's plan, then call Gemini again and apply fresh tasks to TODAY?",
+      )
+    ) {
+      return;
+    }
+    setResult(null);
+    startTransition(async () => {
+      const res = await resetTodayAnalysisAndRerun();
+      setResult(res);
+    });
+  }
+
   async function copyPayload() {
     await navigator.clipboard.writeText(fullPayload);
     setCopied(true);
@@ -203,18 +221,24 @@ export function CursorBridge({
 
         {runAlreadyToday ? (
           <div className="rounded-md border border-emerald-500/30 bg-emerald-500/[0.06] px-3 py-2.5 text-sm text-emerald-200/90">
-            <p className="font-medium">Tonight&apos;s analysis is done</p>
+            <p className="font-medium">Today&apos;s analysis is done ({timezone})</p>
             <p className="mt-1 text-xs text-emerald-200/70">
-              One run per day. View results on{" "}
+              One automatic run per IST calendar day. View on{" "}
               <Link href="/insights" className="underline hover:text-emerald-100">
                 /insights
-              </Link>{" "}
-              or edit tomorrow on{" "}
-              <Link href="/today" className="underline hover:text-emerald-100">
-                /today
               </Link>
-              .
+              . Building features and need a fresh run? Use reset below.
             </p>
+            {geminiApiEnabled && (
+              <button
+                type="button"
+                onClick={runResetAndRerunToday}
+                disabled={pending}
+                className="btn mt-3 w-full border-amber-500/40 text-amber-200 hover:bg-amber-500/10"
+              >
+                {pending ? "Working…" : "Reset today & rerun Gemini"}
+              </button>
+            )}
           </div>
         ) : geminiApiEnabled ? (
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -269,9 +293,10 @@ export function CursorBridge({
 
       <section className="card space-y-3">
         <header>
-          <h2 className="section-label">Midnight pipeline</h2>
+          <h2 className="section-label">Midnight cron (simulate)</h2>
           <p className="mt-1 text-sm text-fg-muted">
-            Same as the cron job: lock today → Gemini → apply tomorrow → clear captures.
+            Same as production cron at 00:00 {timezone}: lock yesterday → Gemini → apply to
+            today → roll standards.
           </p>
         </header>
         <button
@@ -280,8 +305,18 @@ export function CursorBridge({
           disabled={pending || !geminiApiEnabled}
           className="btn w-full"
         >
-          {pending ? "Running…" : "Run full midnight pipeline now"}
+          {pending ? "Running…" : "Run midnight pipeline now"}
         </button>
+        {geminiApiEnabled && (
+          <button
+            type="button"
+            onClick={runResetAndRerunToday}
+            disabled={pending}
+            className="btn w-full border-amber-500/40 text-amber-200 hover:bg-amber-500/10"
+          >
+            {pending ? "Working…" : "Reset today & rerun (dev)"}
+          </button>
+        )}
       </section>
 
       <details className="card space-y-3">
@@ -335,8 +370,15 @@ export function CursorBridge({
               <p className="text-sm text-fg-muted">{result.reason ?? "Skipped"}</p>
             ) : (
               <p className="text-sm text-emerald-300">
-                Plan applied. Created {result.tasksCreated ?? 0} tasks for tomorrow. Run id:{" "}
-                <span className="font-mono text-xs">{result.runId}</span>
+                Plan applied. Created {result.tasksCreated ?? 0} task
+                {(result.tasksCreated ?? 0) === 1 ? "" : "s"}.
+                {result.runsDeleted != null && result.runsDeleted > 0 && (
+                  <> Cleared {result.runsDeleted} prior run(s).</>
+                )}
+                {result.cursorTasksDeleted != null && result.cursorTasksDeleted > 0 && (
+                  <> Removed {result.cursorTasksDeleted} old AI task(s).</>
+                )}{" "}
+                Run id: <span className="font-mono text-xs">{result.runId}</span>
               </p>
             )
           ) : (

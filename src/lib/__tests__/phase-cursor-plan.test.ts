@@ -89,20 +89,6 @@ describe("Phase 3 · cursor / analysis JSON", () => {
     expect(v.ok).toBe(true);
   });
 
-  it("rejects more than two friction_level 3 tasks", () => {
-    const plan = {
-      summary: "test",
-      tomorrow_tasks: [
-        { macro_goal_slug: "RICH", task_name: "a", friction_level: 3 },
-        { macro_goal_slug: "RICH", task_name: "b", friction_level: 3 },
-        { macro_goal_slug: "RICH", task_name: "c", friction_level: 3 },
-      ],
-    };
-    const v = validateCursorPlan(plan, SLUGS);
-    expect(v.ok).toBe(false);
-    if (!v.ok) expect(v.error).toContain("friction_level: 3");
-  });
-
   it("rejects invalid friction_level", () => {
     const plan = {
       summary: "test",

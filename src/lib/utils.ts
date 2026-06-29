@@ -15,10 +15,6 @@ export function formatDateISO(d: Date = new Date()): string {
   return formatDateISOInTz(d);
 }
 
-export function hourLocal(d: Date = new Date()): number {
-  return d.getHours();
-}
-
 /** Local hour when the evening debrief panel appears on /today. */
 export const DEBRIEF_UI_HOUR = 18;
 

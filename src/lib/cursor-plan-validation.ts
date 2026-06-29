@@ -63,7 +63,6 @@ export function validateCursorPlan(
     return { ok: false, error: "summary must be a string" };
   if (!Array.isArray(p.tomorrow_tasks))
     return { ok: false, error: "tomorrow_tasks must be an array" };
-  let frogCount = 0;
   for (const t of p.tomorrow_tasks) {
     if (!t || typeof t !== "object")
       return { ok: false, error: "tomorrow_tasks item not object" };
@@ -99,13 +98,6 @@ export function validateCursorPlan(
         error: "friction_level must be 1, 2, or 3 when present",
       };
     }
-    if (friction === 3) frogCount++;
-  }
-  if (frogCount > 2) {
-    return {
-      ok: false,
-      error: `at most 2 friction_level: 3 tasks allowed per day (found ${frogCount})`,
-    };
   }
 
   const citedJ = validateUuidList("cited_journal_ids", p.cited_journal_ids);

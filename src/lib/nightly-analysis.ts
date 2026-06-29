@@ -284,6 +284,8 @@ export async function runNightlyAnalysisForUser(
      * Manual / evening runs use tomorrow as the target plan date.
      */
     midnightBoundary?: boolean;
+    /** Dev / manual: apply AI tasks to today's plan (not tomorrow). */
+    applyToToday?: boolean;
   },
 ): Promise<NightlyAnalysisResult> {
   const todayISO = formatDateISOInTz();
@@ -297,10 +299,11 @@ export async function runNightlyAnalysisForUser(
   }
 
   const midnight = opts?.midnightBoundary === true;
+  const applyToToday = opts?.applyToToday === true || midnight;
 
   if (midnight) {
     await forceLockPlanForDate(supabase, userId, yesterdayDateISOInTz());
-  } else if (opts?.forceLock !== false) {
+  } else if (opts?.forceLock === true) {
     await forceLockTodayForUser(supabase, userId);
   }
 
@@ -312,11 +315,11 @@ export async function runNightlyAnalysisForUser(
     rawOutputText: generated.rawOutputText,
     provider: "gemini",
     runDate,
-    targetPlanDate: midnight ? todayISO : undefined,
+    targetPlanDate: applyToToday ? todayISO : undefined,
   });
   if (!applied.ok) return { ok: false, error: applied.error };
 
-  if (midnight) {
+  if (applyToToday) {
     await ensureStandardTasksForPlan(supabase, userId, applied.planId);
   }
 
