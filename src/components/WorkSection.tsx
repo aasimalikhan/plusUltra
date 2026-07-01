@@ -7,7 +7,6 @@ import {
 import { TaskRow } from "./TaskRow";
 import { AddTaskInline } from "./AddTaskInline";
 import Link from "next/link";
-import { cn } from "@/lib/utils";
 
 function WorkClientBlock({
   client,
@@ -77,26 +76,18 @@ export function WorkSection({
   richGoal,
   untaggedCandidates,
   workContexts,
-  workLocked = false,
 }: {
   workTasks: Task[];
   richGoal: MacroGoal | undefined;
   untaggedCandidates: Task[];
   workContexts: WorkContextBundle;
-  /** Past daily_work_cutoff — visually lock employer work */
-  workLocked?: boolean;
 }) {
   const verizonTasks = workTasks.filter((t) => resolveWorkClient(t) === "verizon");
   const freelanceTasks = workTasks.filter((t) => resolveWorkClient(t) === "freelance");
   const done = workTasks.filter((t) => t.status === "done").length;
 
   return (
-    <section
-      className={cn(
-        "card border-blue-500/20 bg-blue-500/[0.015] transition",
-        workLocked && "pointer-events-none opacity-40 grayscale",
-      )}
-    >
+    <section className="card border-blue-500/20 bg-blue-500/[0.015] transition">
       <header className="mb-3 flex items-start justify-between gap-3">
         <div>
           <p className="section-label text-blue-300/90">Work · Verizon + freelance</p>
@@ -105,11 +96,6 @@ export function WorkSection({
             Separate from personal standards. Work misses don&apos;t trigger repair journaling.
             Tag Verizon employer work vs freelance client work.
           </p>
-          {workLocked && (
-            <p className="mt-2 text-xs text-fg-subtle">
-              Work cutoff reached — employer work is locked for tonight.
-            </p>
-          )}
         </div>
         <span className="shrink-0 font-mono text-xs text-fg-subtle">
           {done}/{workTasks.length}

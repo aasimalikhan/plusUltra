@@ -1,4 +1,4 @@
-# plusUltra — Complete System Documentation
+# KernelStack labs — Complete System Documentation
 
 > **Slave to the logical brain.**  
 > Single-user personal operating system implementing the **Attack Mode** behavioral framework: daily execution, CBT journaling, AI-driven plan mutation, and system-health metrics — not streaks, not blame, not vibes.
@@ -9,7 +9,7 @@ This document describes how the app works end-to-end: philosophy, features, data
 
 ## Table of Contents
 
-1. [What plusUltra Is](#1-what-plusultra-is)
+1. [What KernelStack labs Is](#1-what-plusultra-is)
 2. [Attack Mode — Philosophy & Principles](#2-attack-mode--philosophy--principles)
 3. [The Two Brains Model](#3-the-two-brains-model)
 4. [Identity System — Macro Pillars](#4-identity-system--macro-pillars)
@@ -36,9 +36,9 @@ This document describes how the app works end-to-end: philosophy, features, data
 
 ---
 
-## 1. What plusUltra Is
+## 1. What KernelStack labs Is
 
-plusUltra is a **personal productivity + introspection app** that runs a behavioral framework called **Attack Mode** as executable software. It is not a generic todo app. It is a closed loop:
+KernelStack labs is a **personal productivity + introspection app** that runs a behavioral framework called **Attack Mode** as executable software. It is not a generic todo app. It is a closed loop:
 
 ```
 Morning  → read NEW ME rules, execute today's plan (default brain)
@@ -76,7 +76,7 @@ Tomorrow → new AI tasks + standard templates + repair tasks appear
 
 ## 2. Attack Mode — Philosophy & Principles
 
-Attack Mode exists in two layers inside plusUltra:
+Attack Mode exists in two layers inside KernelStack labs:
 
 1. **Content layer** — browsable reference library at `/attack-mode` (Modules 1, 2, 5 + Section 5 System)
 2. **Runtime layer** — distilled into `src/lib/analyst-framework.ts` and injected into every nightly AI analysis
@@ -515,9 +515,9 @@ Two lock paths:
 | Trigger | Function | When |
 |---------|----------|------|
 | User visit | `autoMarkOverdueAsMissed()` | Past unlocked days anytime; today after **11pm local** |
-| Cron | `forceLockTodayForUser()` | Midnight cron (uses `PLUSULTRA_TIMEZONE` for dates) |
+| Cron | `forceLockTodayForUser()` | Midnight cron (uses `KERNELSTACK_LABS_TIMEZONE` for dates) |
 
-**Note:** 11pm lock uses browser/server local hour (`utils.ts`); cron `run_date` uses `PLUSULTRA_TIMEZONE`. These can diverge if server TZ ≠ configured TZ.
+**Note:** 11pm lock uses browser/server local hour (`utils.ts`); cron `run_date` uses `KERNELSTACK_LABS_TIMEZONE`. These can diverge if server TZ ≠ configured TZ.
 
 Lock effects:
 - All `pending` tasks → `missed`
@@ -683,7 +683,7 @@ Non-Pro providers (Flash, Cursor, ChatGPT) get shorter `CURSOR_ANALYST_PROMPT`.
 
 ### 11.7 One apply per day
 
-Enforced by `hasAnalysisRunOnDate()` — checks `analysis_runs.run_date` against app timezone (`PLUSULTRA_TIMEZONE`). Prevents duplicate mutations.
+Enforced by `hasAnalysisRunOnDate()` — checks `analysis_runs.run_date` against app timezone (`KERNELSTACK_LABS_TIMEZONE`). Prevents duplicate mutations.
 
 ---
 
@@ -728,7 +728,7 @@ Returns `ContextBundle` typed in `context-formatter.ts`.
 ```
 ATTACK_MODE_ANALYST_FRAMEWORK
 ---
-PLUSULTRA_APP_OPS
+KERNELSTACK_LABS_APP_OPS
 ---
 GEMINI_PRO_ANALYST_PROMPT (6-phase protocol)
 ---
@@ -739,7 +739,7 @@ LIVE DATA markdown
 ```
 ATTACK_MODE_ANALYST_FRAMEWORK
 ---
-PLUSULTRA_APP_OPS
+KERNELSTACK_LABS_APP_OPS
 ---
 CURSOR_ANALYST_PROMPT
 ---
@@ -813,7 +813,7 @@ Files: `gemini-analysis.ts`, `analysis-env.ts`, `analysis-providers.ts`.
 ```json
 { "path": "/api/cron/nightly", "schedule": "30 18 * * *" }
 ```
-= **18:30 UTC daily**. Adjust UTC hour to align with local midnight via `PLUSULTRA_TIMEZONE`.
+= **18:30 UTC daily**. Adjust UTC hour to align with local midnight via `KERNELSTACK_LABS_TIMEZONE`.
 
 Route: `src/app/api/cron/nightly/route.ts`
 - Auth: `Authorization: Bearer ${CRON_SECRET}`
@@ -1149,7 +1149,7 @@ GEMINI_THINKING_BUDGET=8000
 CRON_SECRET=
 
 # Timezone (for run_date, tomorrow date)
-PLUSULTRA_TIMEZONE=America/New_York
+KERNELSTACK_LABS_TIMEZONE=America/New_York
 ```
 
 ### Local development

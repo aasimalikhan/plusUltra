@@ -2,7 +2,7 @@ import { AttackModeReader } from "@/components/AttackModeReader";
 import { ATTACK_MODE_CHUNKS } from "@/content/attack-mode";
 
 export const metadata = {
-  title: "Attack mode · plusUltra",
+  title: "Attack mode · KernelStack labs",
   description: "Revise the full attack mode framework — local search, no API.",
 };
 
